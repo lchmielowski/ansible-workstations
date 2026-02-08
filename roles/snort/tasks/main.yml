@@ -1,0 +1,168 @@
+- name: Prepare installation of dependencies of snort3 dnf autoconf
+  ansible.builtin.dnf:
+    name: autoconf
+    state: latest
+  become: true
+  become_method: sudo
+
+- name: Prepare installation of dependencies of snort3 dnf automake
+  ansible.builtin.dnf:
+    name: automake
+    state: latest
+  become: true
+  become_method: sudo
+
+- name: Prepare installation of dependencies of snort3 dnf libtool
+  ansible.builtin.dnf:
+    name: libtool
+    state: latest
+  become: true
+  become_method: sudo
+
+- name: Prepare installation of dependencies of snort3 dnf gcc-c++
+  ansible.builtin.dnf:
+    name: gcc-c++
+    state: latest
+  become: true
+  become_method: sudo
+
+- name: Prepare installation of dependencies of snort3 dnf cmake
+  ansible.builtin.dnf:
+    name: cmake
+    state: latest
+  become: true
+  become_method: sudo
+
+- name: Prepare installation of dependencies of snort3 dnf xz-devel
+  ansible.builtin.dnf:
+    name: xz-devel
+    state: latest
+  become: true
+  become_method: sudo
+
+- name: Prepare installation of dependencies of snort3 dnf flex
+  ansible.builtin.dnf:
+    name: flex
+    state: latest
+  become: true
+  become_method: sudo
+
+- name: Prepare installation of dependencies of snort3 dnf hwloc-devel
+  ansible.builtin.dnf:
+    name: hwloc-devel
+    state: latest
+  become: true
+  become_method: sudo
+
+- name: Prepare installation of dependencies of snort3 dnf libdnet-devel
+  ansible.builtin.dnf:
+    name: libdnet-devel
+    state: latest
+  become: true
+  become_method: sudo
+
+- name: Prepare installation of dependencies of snort3 dnf libpcap-devel
+  ansible.builtin.dnf:
+    name: libpcap-devel
+    state: latest
+  become: true
+  become_method: sudo
+
+- name: Prepare installation of dependencies of snort3 dnf pcre-devel
+  ansible.builtin.dnf:
+    name: pcre-devel
+    state: latest
+  become: true
+  become_method: sudo
+
+- name: Prepare installation of dependencies of snort3 dnf zlib-devel
+  ansible.builtin.dnf:
+    name: zlib-devel
+    state: latest
+  become: true
+  become_method: sudo
+
+- name: Prepare installation of dependencies of snort3 dnf luajit-devel
+  ansible.builtin.dnf:
+    name: luajit-devel
+    state: latest
+  become: true
+  become_method: sudo
+
+- name: Prepare installation of dependencies of snort3 dnf openssl-devel
+  ansible.builtin.dnf:
+    name: openssl-devel
+    state: latest
+  become: true
+  become_method: sudo
+
+
+- name: Prepare installation of dependencies of snort3 dnf libunwind-devel
+  ansible.builtin.dnf:
+    name: libunwind-devel
+    state: latest
+  become: true
+  become_method: sudo
+
+- name: Prepare installation of dependencies of snort3 dnf pcre-devel
+  ansible.builtin.dnf:
+    name: pcre-devel
+    state: latest
+  become: true
+  become_method: sudo
+
+- name: Prepare installation of dependencies of snort3 dnf zlib-devel
+  ansible.builtin.dnf:
+    name: zlib-devel
+    state: latest
+  become: true
+  become_method: sudo
+
+- name: Prepare installation of dependencies of snort3 dnf hyperscan-devel
+  ansible.builtin.dnf:
+    name: hyperscan-devel
+    state: latest
+  become: true
+  become_method: sudo
+
+- name: Prepare installation of dependencies of snort3 dnf libmnl-devel
+  ansible.builtin.dnf:
+    name: libmnl-devel
+    state: latest
+  become: true
+  become_method: sudo
+
+- name: Prepare installation of dependencies of snort3 dnf ethtool
+  ansible.builtin.dnf:
+    name: ethtool
+    state: latest
+  become: true
+  become_method: sudo
+
+- name: Prepare installation of dependencies of snort3 dnf libuuid-devel
+  ansible.builtin.dnf:
+    name: libuuid-devel
+    state: latest
+  become: true
+  become_method: sudo
+
+- name: Prepare installation of dependencies of snort3 dnf https://kojipkgs.fedoraproject.org//packages/pcre2/10.47/1.fc43/x86_64/pcre2-devel-10.47-1.fc43.x86_64.rpm
+  ansible.builtin.shell:
+    cmd: |
+      dnf install -y https://kojipkgs.fedoraproject.org//packages/pcre2/10.47/1.fc43/x86_64/pcre2-devel-10.47-1.fc43.x86_64.rpm
+  become: true
+  become_method: sudo
+
+- name: Prepare installation of dependencies of snort3 libdaq3
+  ansible.builtin.shell:
+    cmd: |
+      [ -e /etc/ld.so.conf.d/libdaq3.conf ] || git clone https://github.com/snort3/libdaq.git && cd libdaq && ./bootstrap && ./configure --prefix=/usr/local/lib/daq_s3 && make install && echo "/usr/local/lib/daq_s3/lib/" > /etc/ld.so.conf.d/libdaq3.conf && ldconfig
+  become: true
+  become_method: sudo
+
+- name: Prepare installation of snort3
+  ansible.builtin.shell:
+    cmd: |
+      [ -e /path/to/snorty/bin/snort ]|| git clone https://github.com/snort3/snort3.git && export my_path=/path/to/snorty && mkdir -p $my_path && cd snort3 && ./configure_cmake.sh --prefix=$my_path --with-daq-includes=/usr/local/lib/daq_s3/include/ --with-daq-libraries=/usr/local/lib/daq_s3/lib/ && cd build && make -j $(nproc) && make install
+  become: true
+  become_method: sudo
