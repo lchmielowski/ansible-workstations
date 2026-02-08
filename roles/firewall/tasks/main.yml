@@ -1,0 +1,37 @@
+- name: Disable samba service
+  ansible.posix.firewalld:
+    zone: FedoraWorkstation
+    service: samba-client
+    permanent: true
+    state: disabled
+  become: true
+  become_method: sudo
+
+- name: Disable dhcpv6-client
+  ansible.posix.firewalld:
+    zone: FedoraWorkstation
+    service: dhcpv6-client
+    permanent: true
+    state: disabled
+  become: true
+  become_method: sudo
+
+- name: Close all remaining ports from 1025 to 65535 for UDP
+  ansible.posix.firewalld:
+    zone: FedoraWorkstation
+    port: 1025-65535/udp
+    permanent: yes
+    immediate: yes
+    state: disabled
+  become: true
+  become_method: sudo
+
+- name: Close all remaining ports from 1025 to 65535 for TCP
+  ansible.posix.firewalld:
+    zone: FedoraWorkstation
+    port: 1025-65535/tcp
+    permanent: yes
+    immediate: yes
+    state: disabled
+  become: true
+  become_method: sudo

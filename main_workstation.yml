@@ -1,0 +1,7 @@
+---
+- name: Configure Main Workstation
+  hosts: main_workstation
+
+  roles:
+    - ping
+    - firewall

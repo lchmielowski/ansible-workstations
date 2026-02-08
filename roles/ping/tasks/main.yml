@@ -1,0 +1,2 @@
+- name: Ping my hosts
+  ansible.builtin.ping:
