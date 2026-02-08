@@ -6,3 +6,4 @@
     - ping
     - firewall
     - upgrade
+    - standard_packages
