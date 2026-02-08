@@ -1,0 +1,41 @@
+- name: Download opensnitch core part
+  ansible.builtin.shell:
+    cmd: |
+      wget https://github.com/evilsocket/opensnitch/releases/download/v1.8.0/opensnitch-1.8.0-1.x86_64.rpm
+  become: true
+  become_method: sudo
+
+- name: Install opensnitch core part
+  ansible.builtin.shell:
+    cmd: |
+      dnf install -y /home/home/opensnitch-*.rpm
+  become: true
+  become_method: sudo
+
+- name: Delete opensnitch core part installation file
+  ansible.builtin.shell:
+    cmd: |
+      rm /home/home/opensnitch-1.8.0-1.x86_64.rpm
+  become: true
+  become_method: sudo
+
+- name: Download opensnitch ui
+  ansible.builtin.shell:
+    cmd: |
+      wget https://github.com/evilsocket/opensnitch/releases/download/v1.8.0/opensnitch-ui-1.8.0-1.noarch.rpm
+  become: true
+  become_method: sudo
+
+- name: Install opensnitch ui
+  ansible.builtin.shell:
+    cmd: |
+      dnf install -y /home/home/opensnitch-ui-*.rpm
+  become: true
+  become_method: sudo
+
+- name: Delete opensnitch ui installation file
+  ansible.builtin.shell:
+    cmd: |
+      rm /home/home/opensnitch-ui-1.8.0-1.noarch.rpm
+  become: true
+  become_method: sudo
