@@ -1,0 +1,6 @@
+- name: Install the latest version of pycharm-community
+  ansible.builtin.dnf:
+    name: pycharm-community
+    state: latest
+  become: true
+  become_method: sudo
