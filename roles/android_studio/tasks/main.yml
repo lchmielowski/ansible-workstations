@@ -1,0 +1,30 @@
+- name: Install the latest snapd
+  ansible.builtin.dnf:
+    name: snapd
+    state: latest
+  become: true
+  become_method: sudo
+
+- name: Install, create symlink for snap
+  ansible.builtin.shell:
+    cmd: |
+      [ -e /snap ] || ln -sf /var/lib/snapd/snap /snap
+  become: true
+  become_method: sudo
+
+- name: Reboot a machine
+  ansible.builtin.reboot:
+    reboot_timeout: 3600
+  become: true
+  become_method: sudo
+
+- name: Pause for 10 minutes for startup
+  ansible.builtin.pause:
+    minutes: 10
+
+- name: Install Android Studio Classic
+  ansible.builtin.shell:
+    cmd: |
+      snap install android-studio --classic
+  become: true
+  become_method: sudo
