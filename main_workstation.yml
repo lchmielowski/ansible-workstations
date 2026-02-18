@@ -10,6 +10,7 @@
     - samba_data
     - samba_photos
     - pycharm
+    - setup_pycharm_projects
     - ollama
     - android_studio
     - keepassxc
