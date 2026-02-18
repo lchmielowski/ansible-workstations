@@ -13,6 +13,7 @@
     - setup_pycharm_projects
     - ollama
     - android_studio
+    - setup_android_projects
     - keepassxc
     - snort
     - opensnitch
