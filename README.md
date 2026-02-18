@@ -15,7 +15,7 @@ The purpose of this repository is to provide a set of Ansible playbooks for sett
 
 ## Usage
 
-For proper samba setup please adjust configuration file [main.yml](samba_data/vars/main.yml).
+For proper samba setup please adjust configuration files for data storage [main.yml](samba_data/vars/main.yml) and photos storage [main.yml](samba_photos/vars/main.yml).
 
 Run command to run the playbook: ```ansible-playbook -i inventory.ini main_workstation.yml```.
 

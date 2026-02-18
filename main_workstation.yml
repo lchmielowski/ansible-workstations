@@ -8,6 +8,7 @@
     - upgrade
     - standard_packages
     - samba_data
+    - samba_photos
     - pycharm
     - ollama
     - android_studio
