@@ -1,0 +1,74 @@
+- name: Prepare installation of dependencies of samba mount dnf cifs-utils
+  ansible.builtin.dnf:
+    name: cifs-utils
+    state: latest
+  become: true
+  become_method: sudo
+
+- name: Prepare installation of dependencies of samba mount dnf samba-client
+  ansible.builtin.dnf:
+    name: samba-client
+    state: latest
+  become: true
+  become_method: sudo
+
+- name: Prepare installation of dependencies of samba mount dnf samba-common
+  ansible.builtin.dnf:
+    name: samba-common
+    state: latest
+  become: true
+  become_method: sudo
+
+- name: Create directory for credential files
+  file:
+    path: /mnt/samba-credentials
+    state: directory
+    mode: '0755'
+  become: true
+  become_method: sudo
+
+- name: Prepare credential file
+  ansible.builtin.shell:
+    cmd: |
+      [ -e /mnt/samba-credentials/.smbcredentials-data ] || echo "[Credentials]" > /mnt/samba-credentials/.smbcredentials-data && echo "username={{smb_data_username}}" >> /mnt/samba-credentials/.smbcredentials-data && echo "password={{smb_data_password}}" >> /mnt/samba-credentials/.smbcredentials-data
+  become: true
+  become_method: sudo
+
+- name: Set proper permission on credential file
+  file:
+    path: /mnt/samba-credentials/.smbcredentials-data
+    mode: '0600'
+  become: true
+  become_method: sudo
+
+- name: Create mount point directory if not exists
+  ansible.builtin.shell:
+    cmd: |
+      ls -1 /mnt | grep -q samba-data || mkdir -p /mnt/samba-data
+  become: true
+  become_method: sudo
+
+- name: Set permissions on mount point directory
+  file:
+    path: /mnt/samba-data
+    state: directory
+    mode: '0755'
+  become: true
+  become_method: sudo
+
+- name: Insert to fstab that configuration
+  ansible.builtin.shell:
+    cmd: |
+      cat /etc/fstab | grep -q "smbcredentials-data" || echo "//{{smb_data_address}}/data /mnt/samba-data cifs credentials=/mnt/samba-credentials/.smbcredentials-data,uid=1000,gid=1000,iocharset=utf8 0 0" >> /etc/fstab
+  become: true
+  become_method: sudo
+
+- name: Reboot a machine
+  ansible.builtin.reboot:
+    reboot_timeout: 3600
+  become: true
+  become_method: sudo
+
+- name: Pause for 10 minutes for startup
+  ansible.builtin.pause:
+    minutes: 10
