@@ -1,0 +1,9 @@
+---
+postgres_username: postgres_username
+postgres_password: postgres_password
+postgres_database: postgres_database
+container_name: postgrescontainer
+backup_encrypted_path: /path/to/encrypted/file
+decrypted_backup_path: /path/to/temporary/decrypted/file
+fernet_key_file_path: /path/to/fernet/key/file
+image_name: docker.io/postgres:17.8-alpine3.23
