@@ -11,4 +11,4 @@
 - name: Clone repositories from github lingua-sytes-android
   ansible.builtin.shell:
     cmd: |
-      [ -e ~/AndroidStudioProjects/lingua-sytes-android ] || ( cp /mnt/samba-data/system_installation/ssh_keys/github_ssh_key ~/github_key_tmp && chmod 600 ~/github_key_tmp && eval `ssh-agent -s` && ssh-add ~/github_key_tmp && ssh-add -L && cd ~/AndroidStudioProjects && git clone git clone https://github.com/lchmielowski/lingua-sytes-android.git )
+      [ -e ~/AndroidStudioProjects/lingua-sytes-android ] || ( cp /mnt/samba-data/system_installation/ssh_keys/github_ssh_key ~/github_key_tmp && chmod 600 ~/github_key_tmp && eval `ssh-agent -s` && ssh-add ~/github_key_tmp && ssh-add -L && cd ~/AndroidStudioProjects && git clone git@github.com:lchmielowski/lingua-sytes-android.git )
