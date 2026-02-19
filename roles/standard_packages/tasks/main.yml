@@ -1,27 +1,10 @@
-- name: Install the latest version of git
+- name: Install essential packages
   ansible.builtin.dnf:
-    name: git
-    state: latest
-  become: true
-  become_method: sudo
-
-- name: Install the latest version of htop
-  ansible.builtin.dnf:
-    name: htop
-    state: latest
-  become: true
-  become_method: sudo
-
-- name: Install the latest version of ncdu
-  ansible.builtin.dnf:
-    name: ncdu
-    state: latest
-  become: true
-  become_method: sudo
-
-- name: Install the latest version of python3-pip
-  ansible.builtin.dnf:
-    name: python3-pip
+    name:
+      - git
+      - htop
+      - ncdu
+      - python3-pip
     state: latest
   become: true
   become_method: sudo
