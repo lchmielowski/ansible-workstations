@@ -5,37 +5,15 @@
   become: true
   become_method: sudo
 
-- name: Download ollama model granite3.1-dense:8b
+- name: Download ollama models
   ansible.builtin.shell:
     cmd: |
-      ollama pull granite3.1-dense:8b
-
-- name: Download ollama model granite-embedding:30m
-  ansible.builtin.shell:
-    cmd: |
-      ollama pull granite-embedding:30m
-
-- name: Download ollama model llama3.1:8b
-  ansible.builtin.shell:
-    cmd: |
-      ollama pull llama3.1:8b
-
-- name: Download ollama model moondream:latest
-  ansible.builtin.shell:
-    cmd: |
-      ollama pull moondream:latest
-
-- name: Download ollama model qwen2.5-coder:1.5b-base
-  ansible.builtin.shell:
-    cmd: |
-      ollama pull qwen2.5-coder:1.5b-base
-
-- name: Download ollama model qwen2.5-coder:1.5b
-  ansible.builtin.shell:
-    cmd: |
-      ollama pull qwen2.5-coder:1.5b
-
-- name: Download ollama model steamdj/llama3.1-cpu-only:latest
-  ansible.builtin.shell:
-    cmd: |
-      ollama pull steamdj/llama3.1-cpu-only:latest
+      ollama pull "{{ item }}"
+  loop:
+    - granite3.1-dense:8b
+    - granite-embedding:30m
+    - llama3.1:8b
+    - moondream:latest
+    - qwen2.5-coder:1.5b-base
+    - qwen2.5-coder:1.5b
+    - steamdj/llama3.1-cpu-only:latest
