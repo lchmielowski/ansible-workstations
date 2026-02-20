@@ -48,7 +48,8 @@
   ansible.builtin.shell:
     cmd: |
       [ -e /path/to/snorty/bin/snort ] || \
-      git clone https://github.com/snort3/snort3.git && export my_path=/path/to/snorty && \
+      git clone https://github.com/snort3/snort3.git && \
+      export my_path=/path/to/snorty && \
       mkdir -p $my_path && \
       cd snort3 && \
       ./configure_cmake.sh --prefix=$my_path --with-daq-includes=/usr/local/lib/daq_s3/include/ --with-daq-libraries=/usr/local/lib/daq_s3/lib/ && \
