@@ -56,12 +56,9 @@
   become: true
   become_method: sudo
 
-- name: Reboot a machine
-  ansible.builtin.reboot:
-    reboot_timeout: 3600
+- name: Reload settings and mount
+  ansible.builtin.shell:
+    cmd: |
+      systemctl daemon-reload && mount -a
   become: true
   become_method: sudo
-
-- name: Pause for 10 minutes for startup
-  ansible.builtin.pause:
-    minutes: 10
