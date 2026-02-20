@@ -19,10 +19,10 @@
 - name: Prepare credential file
   ansible.builtin.shell:
     cmd: |
-      [ -e /mnt/samba-credentials/.smbcredentials-data ] || \
-      echo "[Credentials]" > /mnt/samba-credentials/.smbcredentials-data && \
-      echo "username={{smb_data_username}}" >> /mnt/samba-credentials/.smbcredentials-data && \
-      echo "password={{smb_data_password}}" >> /mnt/samba-credentials/.smbcredentials-data
+      [ -e /mnt/samba-credentials/.smbcredentials-photos ] || \
+      echo "[Credentials]" > /mnt/samba-credentials/.smbcredentials-photos && \
+      echo "username={{smb_data_username}}" >> /mnt/samba-credentials/.smbcredentials-photos && \
+      echo "password={{smb_data_password}}" >> /mnt/samba-credentials/.smbcredentials-photos
   become: true
   become_method: sudo
 
