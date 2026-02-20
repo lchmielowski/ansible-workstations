@@ -1,20 +1,9 @@
-- name: Prepare installation of dependencies of samba mount dnf cifs-utils
+- name: Prepare installation of dependencies of samba mount
   ansible.builtin.dnf:
-    name: cifs-utils
-    state: latest
-  become: true
-  become_method: sudo
-
-- name: Prepare installation of dependencies of samba mount dnf samba-client
-  ansible.builtin.dnf:
-    name: samba-client
-    state: latest
-  become: true
-  become_method: sudo
-
-- name: Prepare installation of dependencies of samba mount dnf samba-common
-  ansible.builtin.dnf:
-    name: samba-common
+    name:
+    - cifs-utils
+    - samba-client
+    - samba-common
     state: latest
   become: true
   become_method: sudo
@@ -30,7 +19,10 @@
 - name: Prepare credential file
   ansible.builtin.shell:
     cmd: |
-      [ -e /mnt/samba-credentials/.smbcredentials-photos ] || echo "[Credentials]" > /mnt/samba-credentials/.smbcredentials-photos && echo "username={{smb_photos_username}}" >> /mnt/samba-credentials/.smbcredentials-photos && echo "password={{smb_photos_password}}" >> /mnt/samba-credentials/.smbcredentials-photos
+      [ -e /mnt/samba-credentials/.smbcredentials-data ] || \
+      echo "[Credentials]" > /mnt/samba-credentials/.smbcredentials-data && \
+      echo "username={{smb_data_username}}" >> /mnt/samba-credentials/.smbcredentials-data && \
+      echo "password={{smb_data_password}}" >> /mnt/samba-credentials/.smbcredentials-data
   become: true
   become_method: sudo
 
@@ -59,7 +51,8 @@
 - name: Insert to fstab that configuration
   ansible.builtin.shell:
     cmd: |
-      cat /etc/fstab | grep -q "smbcredentials-photos" || echo "//{{smb_photos_address}}/data /mnt/samba-photos cifs credentials=/mnt/samba-credentials/.smbcredentials-photos,uid=1000,gid=1000,iocharset=utf8 0 0" >> /etc/fstab
+      cat /etc/fstab | grep -q "smbcredentials-photos" || \
+      echo "//{{smb_photos_address}}/data /mnt/samba-photos cifs credentials=/mnt/samba-credentials/.smbcredentials-photos,uid=1000,gid=1000,iocharset=utf8 0 0" >> /etc/fstab
   become: true
   become_method: sudo
 
