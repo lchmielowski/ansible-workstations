@@ -20,6 +20,7 @@
   - libuuid-devel
   - libtool
   - luajit-devel
+  - openssl-devel
   - pcre-devel
   - xz-devel
   - zlib-devel
