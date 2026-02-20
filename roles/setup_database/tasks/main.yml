@@ -20,14 +20,18 @@
 - name: Decrypt backup file
   ansible.builtin.shell:
     cmd: |
-      [ -e {{decrypted_backup_path}} ] || fernet-decrypt -k {{fernet_key_file_path}} -i {{backup_encrypted_path}} -o {{decrypted_backup_path}}
+      [ -e {{decrypted_backup_path}} ] || \
+      fernet-decrypt -k {{fernet_key_file_path}} -i {{backup_encrypted_path}} -o {{decrypted_backup_path}}
 
 - name: Start container unless is already started
   ansible.builtin.shell:
     cmd: |
-      podman ps | grep -q "{{container_name}}" || podman run -d --restart=always --name "{{container_name}}" -e "POSTGRES_PASSWORD={{postgres_password}}" -d -p "5432:5432" -v "postgres_data:/var/lib/postgresql/data" {{image_name}} 
+      podman ps | grep -q "{{container_name}}" || \
+      podman run -d --restart=always --name "{{container_name}}" -e "POSTGRES_PASSWORD={{postgres_password}}" -d -p "5432:5432" -v "postgres_data:/var/lib/postgresql/data" {{image_name}} 
 
 - name:
   ansible.builtin.shell:
     cmd: |
-      podman cp {{decrypted_backup_path}} "{{container_name}}":/tmp/backup.sql && podman exec -it "{{container_name}}" psql -U {{postgres_username}} -d {{postgres_database}} -f /tmp/backup.sql && rm {{decrypted_backup_path}}
+      podman cp {{decrypted_backup_path}} "{{container_name}}":/tmp/backup.sql && \
+      podman exec -it "{{container_name}}" psql -U {{postgres_username}} -d {{postgres_database}} -f /tmp/backup.sql && \
+      rm {{decrypted_backup_path}}
