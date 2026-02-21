@@ -4,8 +4,11 @@ The purpose of this repository is to provide a set of Ansible playbooks for sett
 
 ## Prerequisites
 
-- installed ansible
-- Created file called inventory.ini with the following content:
+On host:
+
+- installed ansible (dnf install -y ansible)
+- added private ssh key via ```ssh-add path``` command; please note that private and public key pair might be generated with command: ```ssh-keygen -t rsa -b 4096 -C "home@home" && cp id_rsa.pub ~/.ssh/authorized_keys```
+- created file called inventory.ini with the following content:
 
 ```
 [main_workstation]
@@ -13,9 +16,23 @@ The purpose of this repository is to provide a set of Ansible playbooks for sett
 
 ```
 
-## Usage
-
 For proper samba setup please adjust configuration files for [data storage](samba_data/vars/main.yml) and [photos storage](samba_photos/vars/main.yml) and [setup database](roles/setup_database/vars/main.yml).
+
+On workstation:
+
+- configure network on node in my case static IP
+- install ssh and add ssh public key for authentication:
+
+```
+dnf update -y
+dnf install -y sshd && systemctl enable sshd && systemctl start sshd
+mkdir -p ~/.ssh
+touch ~/.ssh/authorized_keys
+PUBLIC_SSH_KEY="ssh-rsa AAAA...."
+cat ~/.ssh/authorized_keys | grep -q "${PUBLIC_SSH_KEY}" || echo "${PUBLIC_SSH_KEY}" > ~/.ssh/authorized_keys
+```
+
+## Usage
 
 Run command to run the playbook: ```ansible-playbook -i inventory.ini main_workstation.yml```.
 
@@ -71,11 +88,11 @@ Clone Android Studio project related repositories.
 
 ### keepassxc
 
-Install KeePassXC password manager.
+Install KeePassXC password manager. Turn on integration with a browser at the keepassxc tool settings and install [firefox plugin](https://addons.mozilla.org/firefox/downloads/file/4628286/keepassxc_browser-1.9.11.xpi)
 
 ### snort
 
-Install Snort intrusion detection system.
+Install Snort intrusion detection system. Consider later adding alias ```alias snort='/path/to/snorty/bin/snort --daq-dir /usr/local/lib/daq_s3/lib/daq'```
 
 ### opensnitch
 
