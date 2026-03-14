@@ -4,7 +4,7 @@
       - "@virtualization"
       - virt-install
       - virt-manager
-    state: present
+    state: latest
   become: true
   become_method: sudo
 
@@ -68,7 +68,7 @@
   dnf:
     name:
       - terraform
-    state: present
+    state: latest
   become: true
   become_method: sudo
 
