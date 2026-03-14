@@ -110,3 +110,16 @@ Prepare environment for working with virtual machines.
 
 Create cronjob for download of encrypted database backups.
 
+## Lingua sytes server
+
+[main_sytes_server.yml](main_sytes_server.yml) describes configuration of Lingua Sytes server.
+
+## Roles
+
+### ping
+
+Test connectivity using `ping`.
+
+### create_db_backups
+
+Create cronjob for creation of encrypted backups.

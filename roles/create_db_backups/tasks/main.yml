@@ -1,0 +1,36 @@
+- name: Install dependencies for fernet
+  ansible.builtin.apt:
+    name: "{{ item }}"
+    state: latest
+  loop:
+    - gem
+    - rubygems
+
+- name: Prepare installation of dependencies of fernet-cli
+  ansible.builtin.shell:
+    cmd: |
+      which fernet-decrypt || gem install fernet-cli
+
+- name: Create backups directory if it does not exist
+  ansible.builtin.file:
+    path: /home/backups
+    state: directory
+    mode: '0755'
+
+- name: Check if remote file exists
+  stat:
+    path: /home/backups/fernet_key_raw.txt
+  register: remote_file
+
+- name: Copy file if not present
+  copy:
+    src: /mnt/samba-data/projects/lingua-sytes/database_backups/fernet_key_raw.txt
+    dest: /home/backups/fernet_key_raw.txt
+  when: not remote_file.stat.exists
+
+- name: Create cron job to create backups of database
+  cron:
+    name: "Create backup of database"
+    minute: "36"
+    hour: "16"
+    job: "/home/lingua-sytes/create_backup.sh >> /var/log/cron-docker.log 2>&1"

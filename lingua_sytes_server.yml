@@ -1,0 +1,7 @@
+---
+- name: Configure Lingua Sytes Server
+  hosts: lingua_sytes_server
+
+  roles:
+    - ping
+    - create_db_backups
