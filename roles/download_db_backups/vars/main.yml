@@ -1,0 +1,4 @@
+---
+path_to_ssh_key: /path/to/ssh/key
+server_address: server.address
+username: root

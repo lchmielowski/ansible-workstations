@@ -1,0 +1,16 @@
+- name: Ensure rsync is installed
+  dnf:
+    name: rsync
+    state: present
+  become: true
+  become_method: sudo
+
+- name: Add cron job to sync backup files from
+  cron:
+    name: "Sync encrypted backups to NFS server"
+    minute: "0"
+    hour: "17"
+    user: root
+    job: "/usr/bin/rsync -av -e \"ssh -i {{ path_to_ssh_key }}\" --ignore-existing {{username}}@{{server_address}}:/home/backups/ /mnt/samba-data/projects/lingua-sytes/database_backups"
+  become: true
+  become_method: sudo

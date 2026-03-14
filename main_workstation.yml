@@ -19,3 +19,4 @@
     - opensnitch
     - setup_database
     - virtual_machines
+    - download_db_backups
