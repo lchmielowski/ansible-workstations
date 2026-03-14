@@ -1,0 +1,85 @@
+- name: Install virtualization packages
+  dnf:
+    name:
+      - "@virtualization"
+      - virt-install
+      - virt-manager
+    state: present
+  become: true
+  become_method: sudo
+
+- name: Enable and start libvirtd service
+  systemd:
+    name: libvirtd
+    state: started
+    enabled: yes
+  become: true
+  become_method: sudo
+
+- name: Add user to libvirt group
+  user:
+    name: "{{ username }}"
+    groups: libvirt
+    append: yes
+  become: true
+  become_method: sudo
+
+- name: Add user to kvm group
+  user:
+    name: "{{ username }}"
+    groups: kvm
+    append: yes
+  become: true
+  become_method: sudo
+
+- name: Verify installation (optional)
+  command: virsh --version
+  register: virsh_version
+  changed_when: false
+
+- debug:
+    msg: "libvirt version: {{ virsh_version.stdout }}"
+
+- name: Check if directory exists
+  stat:
+    path: "/var/lib/libvirt/images"
+  register: libvirt_images
+
+- name: Create storage pool directory for images
+  file:
+    path: "/var/lib/libvirt/images"
+    state: directory
+    owner: libvirt-qemu
+    group: libvirt-qemu
+    mode: '0755'
+  become: true
+  become_method: sudo
+  when: not libvirt_images.stat.exists
+
+- name: Add Hashicorp repo using DNF config-manager
+  ansible.builtin.shell:
+    cmd: |
+      [ -e /etc/yum.repos.d/hashicorp.repo ] || \
+      dnf config-manager addrepo --from-repofile=https://rpm.releases.hashicorp.com/fedora/hashicorp.repo
+  become: true
+  become_method: sudo
+
+- name: Install terraform
+  dnf:
+    name:
+      - terraform
+    state: present
+  become: true
+  become_method: sudo
+
+- name: Define default pool
+  ansible.builtin.shell:
+    cmd: |
+      virsh pool-list --all
+      virsh pool-define-as default dir --target "/var/lib/libvirt/images"
+      virsh pool-build default
+      virsh pool-start default
+      virsh pool-autostart default
+      virsh pool-info default
+  become: true
+  become_method: sudo

@@ -101,3 +101,7 @@ Install OpenSnitch network monitoring tool.
 ### setup_database
 
 Create and configure a database for development environment of Lingua Sytes.
+
+### virtual_machines
+
+Prepare environment for working with virtual machines.
