@@ -112,7 +112,7 @@ Create cronjob for download of encrypted database backups.
 
 ## Lingua sytes server
 
-[main_sytes_server.yml](main_sytes_server.yml) describes configuration of Lingua Sytes server.
+[lingua_sytes_server.yml](lingua_sytes_server.yml) describes configuration of Lingua Sytes server.
 
 ## Roles
 
