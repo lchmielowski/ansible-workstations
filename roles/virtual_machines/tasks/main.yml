@@ -83,3 +83,22 @@
       virsh pool-info default
   become: true
   become_method: sudo
+
+- name: Ensure that PycharmProjects directory exists
+  ansible.builtin.shell:
+    cmd: |
+      mkdir -p ~/PycharmProjects
+
+- name: Copy terraform data
+  ansible.builtin.shell:
+    cmd: |
+      [ -e ~/PycharmProjects/terraform-kvm ] || \
+      cp -r /mnt/samba-data/system_installation/terraform-kvm ~/PycharmProjects/
+
+- name: Create virtual machines
+  ansible.builtin.shell:
+    cmd: |
+      cd ~/PycharmProjects/terraform-kvm/environments/dev && \
+      terraform init && \
+      terraform plan -out=tfplan && \
+      terraform apply -auto-approve
