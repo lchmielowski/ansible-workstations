@@ -1,0 +1,47 @@
+---
+- name: Create Docker build directory
+  file:
+    path: "{{ docker_build_path }}"
+    state: directory
+    mode: '0755'
+
+- name: Copy Dockerfile
+  template:
+    src: Dockerfile
+    dest: "{{ docker_build_path }}/Dockerfile"
+    mode: '0644'
+  notify: rebuild docker image
+
+- name: Copy additional files (if any)
+  copy:
+    src: "{{ item }}"
+    dest: "{{ docker_build_path }}/"
+    mode: '0644'
+  loop: "{{ docker_build_files | default([]) }}"
+  when: docker_build_files is defined
+
+- name: Build Docker image
+  community.docker.docker_image:
+    name: "{{ docker_image_name }}"
+    tag: "{{ docker_image_tag }}"
+    source: build
+    build:
+      path: "{{ docker_build_path }}"
+      dockerfile: Dockerfile
+    state: present
+
+- name: Ensure Docker container is running
+  community.docker.docker_container:
+    name: "{{ docker_container_name }}"
+    image: "{{ docker_image_name }}:{{ docker_image_tag }}"
+    state: started
+    restart_policy: always
+    ports: "{{ docker_ports | default([]) }}"
+    volumes: "{{ docker_volumes | default([]) }}"
+    env: "{{ docker_env_vars | default({}) }}"
+    detach: yes
+  register: container_output
+
+- name: Display container info
+  debug:
+    var: container_output

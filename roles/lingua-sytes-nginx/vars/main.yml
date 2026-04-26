@@ -1,0 +1,14 @@
+---
+docker_container_name: "lingua-app-nginx"
+docker_build_path: "/opt/docker-builds/lingua-sytes"
+docker_image_name: "lingua-app-nginx"
+docker_image_tag: "latest"
+docker_ports:
+  - "80:80"
+docker_volumes:
+  - "/data/app:/app/data"
+docker_env_vars:
+  ENV: "production"
+  DEBUG: "false"
+docker_build_files:
+  - nginx.conf

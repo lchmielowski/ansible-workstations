@@ -1,0 +1,12 @@
+---
+- name: rebuild docker image
+  community.docker.docker_image:
+    name: "{{ docker_image_name }}"
+    tag: "{{ docker_image_tag }}"
+    source: build
+    build:
+      path: "{{ docker_build_path }}"
+      dockerfile: Dockerfile
+      pull: yes
+    state: present
+    force_source: yes

@@ -5,3 +5,4 @@
   roles:
     - ping
     - create_db_backups
+    - lingua-sytes-nginx

@@ -123,3 +123,7 @@ Test connectivity using `ping`.
 ### create_db_backups
 
 Create cronjob for creation of encrypted backups.
+
+### lingua-sytes-nginx
+
+Create nginx for http to https redirection.
