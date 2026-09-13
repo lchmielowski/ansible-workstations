@@ -1,0 +1,25 @@
+---
+# Remote target configuration
+target_server: "192.168.1.100"
+ssh_user: "your_ssh_user"
+ssh_key: "/path/to/private/key"
+ssh_port: 22
+
+# Capture configuration
+capture_interface: "eth0"
+packet_truncation: 100           # Snap length (bytes per packet) passed to remote VM
+capture_output_dir: "/opt/network-capture"
+
+# File rotation settings (Prevents disk space exhaustion)
+rotation_interval: 5             # Rotate files every N seconds; keep short so tests see a PCAP quickly
+
+# BPF filter - strictly excludes SSH port to prevent a packet feedback loop
+capture_filter: "not tcp port {{ ssh_port }} and not udp port {{ ssh_port }}"
+
+# Optimized SSH Options for automation stability
+ssh_options: "-o StrictHostKeyChecking=yes -o UserKnownHostsFile=/root/.ssh/known_hosts -o ConnectTimeout=10 -o ServerAliveInterval=15"
+
+# SSH host public key entries for known_hosts
+# Format: hostname key-type public-key-data (one entry per line)
+# Can contain ED25519, RSA, ECDSA, etc.
+ssh_known_hosts_entry: ""

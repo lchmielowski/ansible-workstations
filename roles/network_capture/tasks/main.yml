@@ -1,0 +1,432 @@
+---
+- name: Validate required network capture settings
+  ansible.builtin.assert:
+    that:
+      - target_server is defined
+      - target_server | trim | length > 0
+      - capture_output_dir is defined
+      - capture_output_dir | trim | length > 0
+      - ssh_user is defined
+      - ssh_user | trim | length > 0
+      - ssh_key is defined
+      - ssh_key | trim | length > 0
+      - capture_interface is defined
+      - capture_interface | trim | length > 0
+    fail_msg: "Network capture requires target_server, capture_output_dir, ssh_user, ssh_key, and capture_interface to be set."
+
+- name: Ensure required capture packages are on local control server
+  ansible.builtin.package:
+    name:
+      - tcpdump
+      - policycoreutils-python-utils  # Required for community.general.semanage
+    state: present
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Create dedicated network capture storage directory
+  ansible.builtin.file:
+    path: "{{ capture_output_dir }}"
+    state: directory
+    mode: '0770'
+    owner: root
+    group: tcpdump
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Configure SELinux file context mapping for network capture directory
+  ansible.builtin.command: "semanage fcontext -a -t net_pcap_cap_t '{{ capture_output_dir }}(/.*)?'"
+  register: semanage_result
+  failed_when: false  # Prevents crashing if the entry already exists on Fedora
+  changed_when: semanage_result.rc == 0
+  become: true
+  become_method: ansible.builtin.sudo
+  when: ansible_selinux is defined and ansible_selinux.status == "enabled"
+
+- name: Force refresh SELinux context on capture directory files
+  ansible.builtin.command: "restorecon -R {{ capture_output_dir }}"
+  register: restorecon_result
+  changed_when: restorecon_result.rc == 0
+  become: true
+  become_method: ansible.builtin.sudo
+  when: ansible_selinux is defined and ansible_selinux.status == "enabled"
+
+- name: Collect recent SELinux AVC denials (best-effort)
+  ansible.builtin.command: "ausearch -m avc -ts recent || journalctl -k --no-pager | grep -i avc || true"
+  register: network_capture_avc
+  become: true
+  become_method: ansible.builtin.sudo
+  changed_when: false
+  failed_when: false
+  when: ansible_selinux is defined and ansible_selinux.status == "enabled"
+
+- name: Save AVC output to capture dir for debugging (if any)
+  ansible.builtin.copy:
+    content: "{{ network_capture_avc.stdout | default('') }}"
+    dest: "{{ capture_output_dir }}/network-capture-avc.log"
+    owner: root
+    group: root
+    mode: '0600'
+  become: true
+  become_method: ansible.builtin.sudo
+  when: (ansible_selinux is defined and ansible_selinux.status == "enabled") and (network_capture_avc.stdout is defined and network_capture_avc.stdout | length > 0)
+
+- name: Ensure ACL package is installed so we can grant tcpdump write access without changing owner
+  ansible.builtin.package:
+    name: acl
+    state: present
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Ensure tcpdump system user exists
+  ansible.builtin.user:
+    name: tcpdump
+    system: true
+    shell: /sbin/nologin
+    state: present
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Grant tcpdump user rwx via POSIX ACL on capture dir (recursive)
+  ansible.builtin.command:
+    cmd: "setfacl -R -m u:tcpdump:rwx {{ capture_output_dir }}"
+  become: true
+  become_method: ansible.builtin.sudo
+  register: setfacl_acl_result
+  failed_when: false
+  changed_when: setfacl_acl_result.rc == 0
+
+- name: Set default POSIX ACL so new files/dirs inherit tcpdump rwx (recursive)
+  ansible.builtin.command:
+    cmd: "setfacl -R -d -m u:tcpdump:rwx {{ capture_output_dir }}"
+  become: true
+  become_method: ansible.builtin.sudo
+  register: setfacl_default_result
+  failed_when: false
+  changed_when: setfacl_default_result.rc == 0
+
+- name: Warn if ACL operations failed (likely filesystem does not support POSIX ACLs)
+  ansible.builtin.debug:
+    msg: "setfacl failed (rc={{ setfacl_acl_result.rc }} / default rc={{ setfacl_default_result.rc }}). Filesystem may not support POSIX ACLs (noacl mount) — captures may fail to be writable by non-root users."
+  when: (setfacl_acl_result is defined and setfacl_acl_result.rc != 0) or (setfacl_default_result is defined and setfacl_default_result.rc != 0)
+
+- name: Ensure root SSH directory exists for known_hosts
+  ansible.builtin.file:
+    path: /root/.ssh
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Ensure SSH private key is readable by root only
+  ansible.builtin.file:
+    path: "{{ ssh_key }}"
+    state: file
+    owner: root
+    group: root
+    mode: '0600'
+  become: true
+  become_method: ansible.builtin.sudo
+  when: ssh_key is defined and ssh_key | trim | length > 0
+
+- name: Verify SSH private key is present and root-only
+  ansible.builtin.stat:
+    path: "{{ ssh_key }}"
+  register: network_capture_ssh_key_stat
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Assert SSH key is valid for systemd service use
+  ansible.builtin.assert:
+    that:
+      - network_capture_ssh_key_stat.stat.exists
+      - network_capture_ssh_key_stat.stat.isreg
+      - network_capture_ssh_key_stat.stat.pw_name == 'root' or network_capture_ssh_key_stat.stat.uid == 0
+      - network_capture_ssh_key_stat.stat.mode == '0600' or network_capture_ssh_key_stat.stat.mode == '0400'
+    fail_msg: "SSH private key {{ ssh_key }} must exist, be root-owned, and be mode 0600/0400 for the network-capture systemd service."
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Find tcpdump binary
+  ansible.builtin.command: "which tcpdump"
+  register: tcpdump_bin
+  changed_when: false
+  failed_when: false
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Check tcpdump capabilities
+  ansible.builtin.command: "getcap {{ tcpdump_bin.stdout }}"
+  register: tcpdump_caps
+  changed_when: false
+  failed_when: false
+  when: tcpdump_bin.rc == 0
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Grant necessary capabilities to tcpdump binary if missing
+  ansible.builtin.command: "setcap cap_net_raw,cap_net_admin+eip {{ tcpdump_bin.stdout }}"
+  when:
+    - tcpdump_bin.rc == 0
+    - "'cap_net_raw' not in tcpdump_caps.stdout"
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Ensure SSH host key for capture target is present in known_hosts
+  ansible.builtin.lineinfile:
+    path: /root/.ssh/known_hosts
+    create: true
+    owner: root
+    group: root
+    mode: '0644'
+    line: "{{ ssh_known_hosts_entry | default('') }}"
+    state: present
+  when: ssh_known_hosts_entry | default('') | length > 0
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Validate capture target host key is trusted
+  ansible.builtin.command: "ssh-keygen -F {{ target_server }} -f /root/.ssh/known_hosts"
+  register: network_capture_known_hosts_check
+  failed_when: network_capture_known_hosts_check.rc != 0
+  changed_when: false
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Build remote tcpdump probe command
+  ansible.builtin.set_fact:
+    network_capture_remote_probe_cmd: >-
+      {% set probe_filter = "'" + capture_filter + "'" if (capture_filter | default('') | trim | length > 0) else '' %}
+      {% if ssh_user == 'root' %}
+      tcpdump -Z root -i {{ capture_interface }} -s {{ packet_truncation }} -c 1 -U {{ probe_filter }}
+      {% else %}
+      sudo -n tcpdump -Z root -i {{ capture_interface }} -s {{ packet_truncation }} -c 1 -U {{ probe_filter }}
+      {% endif %}
+
+- name: Verify the remote user can actually start tcpdump non-interactively
+  ansible.builtin.command:
+    cmd: >-
+      timeout 20s /usr/bin/ssh 
+      -i "{{ ssh_key }}" 
+      -p {{ ssh_port }} 
+      -o BatchMode=yes 
+      -o NumberOfPasswordPrompts=0 
+      {{ ssh_options }} 
+      {{ ssh_user }}@{{ target_server }} 
+      "{{ network_capture_remote_probe_cmd | trim }}"
+  register: network_capture_remote_probe
+  failed_when: network_capture_remote_probe.rc not in [0, 124]
+  changed_when: false
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Verify the remote user can actually start tcpdump non-interactively and save to {{ capture_output_dir }}
+  ansible.builtin.command: >-
+    /bin/bash -lc "timeout 20s /usr/bin/ssh -i \"{{ ssh_key }}\" -p {{ ssh_port }} -o BatchMode=yes -o NumberOfPasswordPrompts=0 {{ ssh_options }} {{ ssh_user }}@{{ target_server }} \"{{ network_capture_remote_probe_cmd }}\" > \"{{ capture_output_dir }}/tcpdump_remote_probe.pcap\" 2>/tmp/network-capture-remote-probe-save.out"
+  register: network_capture_remote_probe_save
+  failed_when: false
+  changed_when: false
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Show the remote tcpdump probe output when it fails
+  ansible.builtin.command: cat /tmp/network-capture-remote-probe.out
+  register: network_capture_remote_probe_output
+  changed_when: false
+  failed_when: false
+  when: network_capture_remote_probe.rc not in [0, 124]
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Deploy remote tcpdump helper script
+  ansible.builtin.template:
+    src: remote_capture.sh.j2
+    dest: /usr/local/bin/network-capture-remote.sh
+    owner: root
+    group: root
+    mode: '0755'
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Deploy systemd service configuration file
+  ansible.builtin.template:
+    src: capture_service.service.j2
+    dest: /etc/systemd/system/network-capture.service
+    mode: '0644'
+  notify: reload network capture systemd daemon
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Ensure network capture service is enabled and actively running
+  ansible.builtin.systemd_service:
+    name: network-capture
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Generate test traffic to trigger packet capture
+  ansible.builtin.get_url:
+    url: https://lingua.sytes.net
+    dest: /dev/null
+    timeout: 30
+  register: network_capture_test_traffic
+  failed_when: false
+  changed_when: false
+
+- name: Wait briefly for tcpdump to write a new capture file
+  ansible.builtin.pause:
+    seconds: "{{ (rotation_interval | int) + 5 if (rotation_interval | int) > 5 else 10 }}"
+
+- name: Check whether tcpdump created a capture file after traffic generation
+  ansible.builtin.find:
+    paths: "{{ capture_output_dir }}"
+    patterns: "capture_*.pcap"
+  register: network_capture_files
+  retries: 12
+  delay: 2
+  until: network_capture_files.matched > 0
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Set latest capture file fact for evaluation mapping
+  ansible.builtin.set_fact:
+    network_capture_latest_file: "{{ network_capture_files.files | sort(attribute='mtime') | last }}"
+  when: network_capture_files.matched > 0
+
+- name: Assert a tcpdump capture file was created
+  block:
+    - name: Validate the capture file exists
+      ansible.builtin.assert:
+        that:
+          - network_capture_files.matched > 0
+        fail_msg: "No tcpdump capture file was created in {{ capture_output_dir }} after generating traffic."
+      become: true
+      become_method: ansible.builtin.sudo
+  rescue:
+    - name: Check whether the capture service is still running after the file assertion failed
+      ansible.builtin.command: systemctl is-active --quiet network-capture
+      register: network_capture_after_file_assert_check
+      failed_when: false
+      changed_when: false
+      become: true
+      become_method: ansible.builtin.sudo
+
+    - name: Show the capture service status after the file assertion failed
+      ansible.builtin.command: systemctl status network-capture --no-pager || true
+      register: network_capture_after_file_assert_status
+      failed_when: false
+      changed_when: false
+      become: true
+      become_method: ansible.builtin.sudo
+
+    - name: Report capture assertion failure with service state
+      ansible.builtin.debug:
+        msg: "Capture file assertion failed; network-capture active check rc={{ network_capture_after_file_assert_check.rc }}"
+
+    - name: Re-raise the original capture-file assertion failure
+      ansible.builtin.fail:
+        msg: "No tcpdump capture file was created after generating traffic to https://lingua.sytes.net. Check the network-capture journal, rotation interval, and capture directory permissions."
+
+- name: Verify the service reaches an active state after startup
+  ansible.builtin.command: systemctl is-active --quiet network-capture
+  register: network_capture_active_check
+  changed_when: false
+  failed_when: false
+  retries: 12
+  delay: 2
+  until: network_capture_active_check.rc == 0
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Assert the service is active after startup
+  ansible.builtin.assert:
+    that:
+      - network_capture_active_check.rc == 0
+    fail_msg: "network-capture did not become active after startup; inspect journalctl -u network-capture for details."
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Capture failing systemd status if the service is not active
+  ansible.builtin.command: systemctl status network-capture --no-pager || true
+  register: network_capture_status_after_start
+  changed_when: false
+  failed_when: false
+  when: network_capture_active_check.rc != 0
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Gather network-capture runtime diagnostics (systemd, journal, ACLs, SELinux, capabilities)
+  ansible.builtin.command:
+    cmd: >
+      echo "--- systemctl status --no-pager" &&
+      systemctl status network-capture --no-pager &&
+      echo "--- recent journal (network-capture)" &&
+      journalctl -u network-capture -n 50 --no-pager
+  register: network_capture_diag
+  become: true
+  become_method: ansible.builtin.sudo
+  changed_when: false
+  failed_when: false
+
+- name: Save network-capture diagnostics to /root for analysis
+  ansible.builtin.copy:
+    content: "{{ network_capture_diag.stdout | default('') }}"
+    dest: /root/network-capture-diagnostics.log
+    owner: root
+    group: root
+    mode: '0600'
+  become: true
+  become_method: ansible.builtin.sudo
+  changed_when: false
+  failed_when: false
+
+- name: Show short summary path to diagnostics
+  ansible.builtin.debug:
+    msg: "Network capture diagnostics saved to /root/network-capture-diagnostics.log on the target host"
+  when: network_capture_diag is defined
+  failed_when: false
+  changed_when: false
+
+- name: Run extended capture-dir debug script and save to /root/network-capture-debug-full.log
+  ansible.builtin.command: >
+    /bin/bash -lc '
+      set -o pipefail
+      echo "--- DATE: $(date -u)";
+      echo "\n--- ls -ldZ /var /var/lib /var/lib/network-capture";
+      ls -ldZ /var /var/lib /var/lib/network-capture || true;
+      echo "\n--- namei -l /var/lib/network-capture";
+      namei -l /var/lib/network-capture || true;
+      echo "\n--- mount options for target";
+      findmnt -no SOURCE,TARGET,FSTYPE,OPTIONS --target /var/lib/network-capture || true;
+      echo "\n--- getfacl -a and -d";
+      getfacl -a /var/lib/network-capture || true;
+      getfacl -d /var/lib/network-capture || true;
+      echo "\n--- id tcpdump and groups";
+      id tcpdump || true;
+      echo "\n--- attempt write as tcpdump user";
+      sudo -u tcpdump bash -lc 'whoami; id; umask; touch /var/lib/network-capture/.network_capture_test && echo TOUCH_OK || echo TOUCH_FAIL; printf "X" > /var/lib/network-capture/.network_capture_test 2>/tmp/tcpdump_write_err || true; echo "WRITE_ERR_CONTENTS:"; sed -n "1,200p" /tmp/tcpdump_write_err || true' || true;
+      echo "\n--- ls -ldZ of capture dir and test file";
+      ls -ldZ /var/lib/network-capture /var/lib/network-capture/.network_capture_test || true;
+      echo "\n--- tcpdump capabilities and ps labels";
+      getcap $(which tcpdump) || true;
+      ps -eZ | grep -E "tcpdump|network-capture" || true;
+      echo "\n--- recent AVC denials (ausearch)";
+      ausearch -m avc -ts today -i || true;
+      echo "\n--- SELinux enforcing";
+      getenforce || true;
+      echo "\n--- journal (network-capture) tail 200";
+      journalctl -u network-capture -n 200 --no-pager || true;
+    ' > /root/network-capture-debug-full.log 2>&1 || true
+  become: true
+  become_method: ansible.builtin.sudo
+  changed_when: false
+  failed_when: false
+
+- name: Show diagnostics file path for debug-full
+  ansible.builtin.debug:
+    msg: "/root/network-capture-debug-full.log saved on the target host (fetch and paste here)"
+  changed_when: false
+  failed_when: false

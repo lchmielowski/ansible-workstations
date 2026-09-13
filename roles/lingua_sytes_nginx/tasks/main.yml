@@ -1,0 +1,178 @@
+---
+- name: Ensure container runtime tool is present (Podman)
+  ansible.builtin.package:
+    name: podman
+    state: latest
+  become: true
+  become_method: ansible.builtin.sudo
+  when: container_runtime == 'podman'
+
+- name: Check if Docker is installed
+  command: docker --version
+  register: docker_check
+  ignore_errors: yes
+  changed_when: false
+  become: true
+  become_method: ansible.builtin.sudo
+  when: container_runtime == 'docker'
+
+- name: Install Docker (Debian/Ubuntu)
+  apt:
+    name: docker.io
+    state: latest
+    update_cache: yes
+  become: true
+  become_method: ansible.builtin.sudo
+  when:
+    - container_runtime == 'docker'
+    - ansible_facts['os_family'] == "Debian"
+    - docker_check.rc != 0
+
+- name: Install Docker (RedHat/CentOS)
+  yum:
+    name: docker
+    state: latest
+  become: true
+  become_method: ansible.builtin.sudo
+  when:
+    - container_runtime == 'docker'
+    - ansible_facts['os_family'] == "RedHat"
+    - docker_check.rc != 0
+
+- name: Create build directory
+  file:
+    path: "{{ docker_build_path }}"
+    state: directory
+    mode: '0755'
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Copy Dockerfile
+  template:
+    src: "{{ role_path }}/Dockerfile"
+    dest: "{{ docker_build_path }}/Dockerfile"
+    mode: '0644'
+  notify: rebuild docker image
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Copy additional build files (if any)
+  copy:
+    src: "{{ role_path }}/{{ item }}"
+    dest: "{{ docker_build_path }}/"
+    mode: "{{ '0600' if item.endswith('.key') else '0644' }}"
+  loop: "{{ docker_build_files | default([]) }}"
+  when: docker_build_files is defined and docker_build_files | length > 0
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Ensure Docker daemon is running
+  systemd:
+    name: docker
+    state: started
+    enabled: yes
+  become: true
+  become_method: ansible.builtin.sudo
+  when: container_runtime == 'docker'
+
+- name: Ensure Docker socket is accessible
+  stat:
+    path: /var/run/docker.sock
+  register: docker_socket
+  become: true
+  become_method: ansible.builtin.sudo
+  when: container_runtime == 'docker'
+
+- name: Fail if Docker socket not found
+  fail:
+    msg: "Docker socket not found at /var/run/docker.sock. Ensure Docker is installed and running."
+  when:
+    - container_runtime == 'docker'
+    - not docker_socket.stat.exists
+
+- name: Check if Podman image exists
+  ansible.builtin.command:
+    cmd: podman image inspect "{{ docker_image_name }}:{{ docker_image_tag }}"
+  register: podman_image_check
+  failed_when: false
+  changed_when: false
+  become: true
+  become_method: ansible.builtin.sudo
+  when: container_runtime == 'podman'
+
+- name: Build image with Podman
+  ansible.builtin.command:
+    cmd: podman build -t "{{ docker_image_name }}:{{ docker_image_tag }}" -f "{{ docker_build_path }}/Dockerfile" "{{ docker_build_path }}"
+  args:
+    chdir: "{{ docker_build_path }}"
+  register: podman_build
+  become: true
+  become_method: ansible.builtin.sudo
+  when:
+    - container_runtime == 'podman'
+    - podman_image_check.rc != 0
+
+- name: Ensure host bind mount directories exist for Podman
+  file:
+    path: "{{ item.split(':')[0] }}"
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+  loop: "{{ docker_volumes | default([]) }}"
+  when:
+    - container_runtime == 'podman'
+    - docker_volumes is defined
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Build image with Docker
+  community.docker.docker_image:
+    name: "{{ docker_image_name }}"
+    tag: "{{ docker_image_tag }}"
+    source: build
+    build:
+      path: "{{ docker_build_path }}"
+      dockerfile: Dockerfile
+    state: present
+  become: true
+  become_method: ansible.builtin.sudo
+  when: container_runtime == 'docker'
+
+- name: Ensure container is running with Podman
+  containers.podman.podman_container:
+    name: "{{ docker_container_name }}"
+    image: "{{ docker_image_name }}:{{ docker_image_tag }}"
+    state: started
+    restart_policy: always
+    ports: "{{ docker_ports | default([]) }}"
+    volumes: "{{ docker_volumes | default([]) }}"
+    env: "{{ docker_env_vars | default({}) }}"
+    network_mode: "{{ docker_network_mode | default('host') }}"
+    detach: yes
+  register: container_output
+  become: true
+  become_method: ansible.builtin.sudo
+  when: container_runtime == 'podman'
+
+- name: Ensure container is running with Docker
+  community.docker.docker_container:
+    name: "{{ docker_container_name }}"
+    image: "{{ docker_image_name }}:{{ docker_image_tag }}"
+    state: started
+    restart_policy: always
+    ports: "{{ docker_ports | default([]) }}"
+    volumes: "{{ docker_volumes | default([]) }}"
+    env: "{{ docker_env_vars | default({}) }}"
+    network_mode: "{{ docker_network_mode | default('host') }}"
+    detach: yes
+  register: container_output
+  become: true
+  become_method: ansible.builtin.sudo
+  when: container_runtime == 'docker'
+
+- name: Display container info
+  debug:
+    var: container_output
+  become: true
+  become_method: ansible.builtin.sudo

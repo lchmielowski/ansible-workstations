@@ -1,0 +1,43 @@
+---
+- name: Configure Test Workstation
+  hosts: test_workstation
+
+  roles:
+    - ping
+    - upgrade
+    - standard_packages
+    - role: samba
+      vars:
+        mount_name: samba-data
+        cred_file: .smbcredentials-data
+        smb_username: "{{ smb_data_username }}"
+        smb_password: "{{ smb_data_password }}"
+        smb_domain: "{{ smb_data_domain | default('') }}"
+        smb_address: "{{ smb_data_address }}"
+        smb_share: "{{ smb_data_share }}"
+    - setup_projects
+    - role: setup_database
+      vars:
+        db_mode: master
+        container_name: postgres_master
+        postgres_password: "{{ postgres_master_password }}"  # loaded from group_vars or Vault
+        # postgres_username / postgres_database are sourced from group_vars/test_workstation.yml or role defaults
+        replication_user: "{{ postgres_replication_user | default('replica_user') }}"
+        replication_password: "{{ postgres_replication_password }}"
+
+    - role: setup_database
+      vars:
+        db_mode: replica
+        replica_name: postgres_replica
+        replica_host_port: 5433
+        # Use the Docker gateway when the primary runs on the host; the fallback logic in
+        # the role also resolves 127.0.0.1 to host.docker.internal for Docker/Podman.
+        primary_host: host.docker.internal
+        primary_port: 5432
+        primary_user: postgres
+        primary_password: "{{ postgres_master_password }}"  # use master's password (Vault)
+        replication_user: "{{ postgres_replication_user | default('replica_user') }}"
+        replication_password: "{{ postgres_replication_password }}"
+    - lingua_sytes_main_container
+    - lingua_sytes_nginx
+    - kibana_apm_stack

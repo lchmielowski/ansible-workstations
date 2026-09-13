@@ -1,0 +1,18 @@
+---
+# Example defaults only. Replace with your own trusted host keys and local SSH key locations.
+setup_projects_known_hosts:
+  - github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEXAMPLEHOSTKEYREPLACE
+  - github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIEXAMPLEHOSTKEYREPLACE
+  - github.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQEXAMPLEHOSTKEYREPLACEME
+
+setup_projects_ssh_key_path: "~/.ssh/id_ed25519"
+setup_projects_github_username: "lchmielowski"
+
+setup_projects_project_dirs:
+  - path: "{{ ansible_facts.user_dir | default(lookup('env', 'HOME')) }}/PycharmProjects"
+    repositories:
+      - example-repo-1
+      - example-repo-2
+  - path: "{{ ansible_facts.user_dir | default(lookup('env', 'HOME')) }}/AndroidStudioProjects"
+    repositories:
+      - example-android-repo

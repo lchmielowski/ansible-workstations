@@ -1,0 +1,16 @@
+---
+docker_container_name: "lingua-app-nginx"
+docker_build_path: "/opt/docker-builds/lingua-sytes"
+docker_image_name: "lingua-app-nginx"
+docker_image_tag: "latest"
+docker_network_mode: "host"
+docker_ports: []
+docker_env_vars: {}
+docker_volumes:
+  - "/data/app:/app/data"
+docker_build_files:
+  - nginx.conf
+  - lingua.sytes.net.crt
+  - lingua.sytes.net.key
+# Container runtime - docker for Debian, podman for Fedora
+container_runtime: "{{ 'podman' if ansible_facts['os_family'] == 'RedHat' else 'docker' }}"

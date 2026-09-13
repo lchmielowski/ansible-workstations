@@ -1,0 +1,121 @@
+#!/bin/bash
+
+set -euo pipefail
+
+# Configuration
+BACKUP_DIR="{{ backup_directory }}"
+DB_HOST="{{ db_host }}"
+DB_USER="{{ db_user }}"
+DB_NAME="{{ db_name }}"
+DB_PASSWORD="{{ db_password }}"
+DOCKER_IMAGE="{{ postgres_docker_image }}"
+TIMESTAMP=$(date +%Y.%m.%d.%H.%M.%S)
+BACKUP_SQL="${BACKUP_DIR}/sql_db_backup_${TIMESTAMP}.sql"
+BACKUP_CUSTOM="${BACKUP_DIR}/sql_db_backup_${TIMESTAMP}.dump"
+LOG_FILE="{{ log_file }}"
+
+# Ensure backup directory exists with proper permissions
+mkdir -p "${BACKUP_DIR}"
+
+# Environment for pg_dump
+export PGPASSWORD="${DB_PASSWORD}"
+
+# Error handler
+trap 'echo "[$(date +"%Y-%m-%d %H:%M:%S")] Backup failed with exit code $?" | tee -a "${LOG_FILE}"' ERR
+
+{
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Starting database backup..."
+  
+  # Plain text SQL backup (for easy restore and review)
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Creating plain text SQL backup to ${BACKUP_SQL}..."
+  {{ container_runtime }} run --rm \
+    -e "PGPASSWORD=${DB_PASSWORD}" \
+    -v "${BACKUP_DIR}:${BACKUP_DIR}" \
+    --network=host \
+    "${DOCKER_IMAGE}" \
+    pg_dump \
+      -Fp \
+      -U "${DB_USER}" \
+      -h "${DB_HOST}" \
+      -d "${DB_NAME}" \
+      -v \
+    > "${BACKUP_SQL}"
+  
+  if [ $? -eq 0 ]; then
+    SIZE=$(du -h "${BACKUP_SQL}" | cut -f1)
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✓ Plain text backup successful (${SIZE})"
+  else
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✗ Plain text backup failed" >&2
+    exit 1
+  fi
+  
+  # Custom format backup (more efficient and allows partial restore)
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Creating custom format backup to ${BACKUP_CUSTOM}..."
+  {{ container_runtime }} run --rm \
+    -e "PGPASSWORD=${DB_PASSWORD}" \
+    --network=host \
+    "${DOCKER_IMAGE}" \
+    pg_dump \
+      -Fc \
+      -U "${DB_USER}" \
+      -h "${DB_HOST}" \
+      -d "${DB_NAME}" \
+      -v \
+    > /tmp/pg_backup.dump
+
+  # Copy to backup directory
+  cp /tmp/pg_backup.dump "${BACKUP_CUSTOM}"
+
+  if [ $? -eq 0 ]; then
+    SIZE=$(du -h "${BACKUP_CUSTOM}" | cut -f1)
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✓ Custom format backup successful (${SIZE})"
+  else
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✗ Custom format backup failed" >&2
+    exit 1
+  fi
+
+ # Encrypt backups with Fernet (if available)
+  FERNET_KEY="{{ fernet_key_path }}"
+
+  if command -v fernet-encrypt >/dev/null 2>&1; then
+    if [ -f "${FERNET_KEY}" ]; then
+      echo "[$(date +"%Y-%m-%d %H:%M:%S")] Encrypting backups with Fernet using key ${FERNET_KEY}..."
+
+      fernet-encrypt -k "${FERNET_KEY}" -i "${BACKUP_SQL}" -o "${BACKUP_SQL}.fernet"
+      if [ $? -eq 0 ]; then
+        SIZE_ENC=$(du -h "${BACKUP_SQL}.fernet" | cut -f1)
+        echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✓ Encrypted ${BACKUP_SQL} -> ${BACKUP_SQL}.fernet (${SIZE_ENC})"
+      else
+        echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✗ Encryption failed for ${BACKUP_SQL}" >&2
+        exit 1
+      fi
+
+      fernet-encrypt -k "${FERNET_KEY}" -i "${BACKUP_CUSTOM}" -o "${BACKUP_CUSTOM}.fernet"
+      if [ $? -eq 0 ]; then
+        SIZE_ENC=$(du -h "${BACKUP_CUSTOM}.fernet" | cut -f1)
+        echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✓ Encrypted ${BACKUP_CUSTOM} -> ${BACKUP_CUSTOM}.fernet (${SIZE_ENC})"
+      else
+        echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✗ Encryption failed for ${BACKUP_CUSTOM}" >&2
+        exit 1
+      fi
+
+      # Optional: remove plain backups after successful encryption (uncomment to enable)
+      # rm -f "${BACKUP_SQL}" "${BACKUP_CUSTOM}"
+    else
+      echo "[$(date +"%Y-%m-%d %H:%M:%S")] Fernet key not found at ${FERNET_KEY}, skipping encryption" >&2
+    fi
+  else
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] fernet-encrypt not installed, skipping encryption" >&2
+  fi
+
+  # Optional: cleanup old backups (keep last 30 days)
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] Cleaning up backups older than 30 days..."
+  find "${BACKUP_DIR}" -type f \( -name "sql_db_backup_*.sql" -o -name "sql_db_backup_*.dump" \) -mtime +30 | \
+    while read -r file; do
+      rm -f "$file"
+      echo "[$(date +"%Y-%m-%d %H:%M:%S")] Removed old backup: $file"
+    done
+  
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] ✓ Backup process completed successfully"
+  
+} | tee -a "${LOG_FILE}"

@@ -1,0 +1,22 @@
+---
+# Generic samba mount role defaults
+# These values should be provided by inventory/group_vars or Ansible Vault.
+smb_username: ""
+smb_password: ""
+smb_domain: ""
+smb_address: ""
+smb_share: ""
+
+# mount_name is used to compose default mount_point and cred_file when not overridden
+mount_name: samba-share
+mount_point: "/mnt/{{ mount_name }}"
+# Store credentials in a system directory by default (safer than under /mnt)
+cred_dir: /etc/samba/credentials
+cred_file: ".smbcredentials-{{ mount_name }}"
+
+# SMB protocol version (can be overridden by inventory/group_vars)
+smb_version: "3.0"
+
+# UID/GID used to mount the share (can be overridden by inventory/group_vars)
+smb_uid: 1000
+smb_gid: 1000

@@ -1,0 +1,8 @@
+---
+- name: Configure Lingua Sytes Server
+  hosts: lingua_sytes_server
+
+  roles:
+    - ping
+    - lingua_sytes_main_container
+    - lingua_sytes_nginx

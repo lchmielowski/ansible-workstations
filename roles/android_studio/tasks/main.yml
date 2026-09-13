@@ -1,0 +1,36 @@
+- name: Install the latest snapd
+  ansible.builtin.package:
+    name: snapd
+    state: latest
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Install, create symlink for snap
+  ansible.builtin.shell:
+    cmd: |
+      [ -e /snap ] || ln -sf /var/lib/snapd/snap /snap
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Reboot a machine
+  ansible.builtin.reboot:
+    reboot_timeout: 3600
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Wait for snapd to finish seeding before installing Android Studio
+  ansible.builtin.command:
+    cmd: snap wait system seed.loaded
+  register: snap_seed
+  retries: 30
+  delay: 10
+  until: snap_seed.rc == 0
+  changed_when: false
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Install Android Studio Classic
+  ansible.builtin.command:
+    cmd: snap install android-studio --classic
+  become: true
+  become_method: ansible.builtin.sudo

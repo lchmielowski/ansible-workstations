@@ -1,0 +1,88 @@
+---
+- name: Validate required project setup variables
+  ansible.builtin.assert:
+    that:
+      - setup_projects_known_hosts is defined
+      - setup_projects_known_hosts | length > 0
+      - setup_projects_project_dirs is defined
+      - setup_projects_project_dirs | length > 0
+      - setup_projects_ssh_key_path is defined
+      - setup_projects_ssh_key_path | trim | length > 0
+      - setup_projects_github_username is defined
+      - setup_projects_github_username | trim | length > 0
+    fail_msg: "Project setup requires trusted GitHub host keys, at least one project directory, a valid SSH private key path, and a GitHub username."
+
+- name: Ensure SSH config directory exists
+  ansible.builtin.file:
+    path: '{{ ansible_facts["user_dir"] | default(lookup("env", "HOME")) }}/.ssh'
+    state: directory
+    owner: "{{ ansible_user | default(lookup('env', 'USER')) }}"
+    group: "{{ ansible_user | default(lookup('env', 'USER')) }}"
+    mode: "0700"
+  become: true
+
+- name: Ensure GitHub host keys are present in known_hosts
+  ansible.builtin.lineinfile:
+    path: '{{ ansible_facts["user_dir"] | default(lookup("env", "HOME")) }}/.ssh/known_hosts'
+    create: true
+    owner: "{{ ansible_user | default(lookup('env', 'USER')) }}"
+    group: "{{ ansible_user | default(lookup('env', 'USER')) }}"
+    mode: "0600"
+    line: "{{ item }}"
+    state: present
+  loop: "{{ setup_projects_known_hosts }}"
+  become: true
+
+- name: Ensure project directories exist
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ ansible_user | default(lookup('env', 'USER')) }}"
+    group: "{{ ansible_user | default(lookup('env', 'USER')) }}"
+    mode: "0755"
+  loop: "{{ setup_projects_project_dirs }}"
+  become: true
+
+- name: Check if SSH key exists
+  ansible.builtin.stat:
+    path: "{{ setup_projects_ssh_key_path }}"
+  register: github_ssh_key_stat
+  become: true
+
+- name: Fail if SSH key is missing
+  ansible.builtin.fail:
+    msg: "SSH key {{ setup_projects_ssh_key_path }} not found on target. Place private key and rerun."
+  when: not github_ssh_key_stat.stat.exists
+
+- name: Ensure SSH private key permissions are correct
+  ansible.builtin.file:
+    path: "{{ setup_projects_ssh_key_path }}"
+    owner: "{{ ansible_user | default(lookup('env','USER')) }}"
+    group: "{{ ansible_user | default(lookup('env','USER')) }}"
+    mode: "0600"
+  become: true
+
+- name: Copy SSH private key to user's .ssh (use local copy to allow chmod on non-POSIX mounts)
+  ansible.builtin.copy:
+    src: "{{ setup_projects_ssh_key_path }}"
+    dest: "{{ ansible_facts['user_dir'] | default(lookup('env','HOME')) }}/.ssh/github_ssh_key"
+    owner: "{{ ansible_user | default(lookup('env','USER')) }}"
+    group: "{{ ansible_user | default(lookup('env','USER')) }}"
+    mode: "0600"
+    remote_src: yes
+  when: github_ssh_key_stat.stat.exists
+  become: true
+
+- name: Clone project repositories from GitHub
+  ansible.builtin.git:
+    repo: "git@github.com:{{ setup_projects_github_username }}/{{ item.1 }}.git"
+    dest: "{{ item.0.path }}/{{ item.1 }}"
+    key_file: "{{ ansible_facts['user_dir'] | default(lookup('env','HOME')) }}/.ssh/github_ssh_key"
+    accept_hostkey: true
+    clone: yes
+    update: no
+  loop: "{{ setup_projects_project_dirs | subelements('repositories') }}"
+  loop_control:
+    label: "{{ item.0.path }}/{{ item.1 }}"
+  become: true
+  become_user: "{{ ansible_user | default(lookup('env','USER')) }}"

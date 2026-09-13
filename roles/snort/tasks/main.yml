@@ -1,0 +1,96 @@
+---
+- name: Install Snort build dependencies
+  ansible.builtin.package:
+    name: "{{ item }}"
+    state: latest
+  become: true
+  loop: "{{ snort_dependencies[ansible_facts['os_family']] }}"
+  vars:
+    snort_dependencies:
+      RedHat:
+        - autoconf
+        - automake
+        - cmake
+        - ethtool
+        - flex
+        - gcc-c++
+        - hwloc-devel
+        - libdnet-devel
+        - libmnl-devel
+        - libpcap-devel
+        - libunwind-devel
+        - libuuid-devel
+        - libtool
+        - luajit-devel
+        - openssl-devel
+        - pcre-devel
+        - pcre2-devel
+        - xz-devel
+        - zlib-devel
+      Debian:
+        - autoconf
+        - automake
+        - cmake
+        - ethtool
+        - flex
+        - g++
+        - libhyperscan-dev
+        - libhwloc-dev
+        - libdnet-dev
+        - libmnl-dev
+        - libpcap-dev
+        - libunwind-dev
+        - uuid-dev
+        - libtool
+        - libluajit-5.1-dev
+        - libssl-dev
+        - libpcre3-dev
+        - libpcre2-dev
+        - liblzma-dev
+        - zlib1g-dev
+
+- name: Ensure sources directory exists
+  ansible.builtin.file:
+    path: /opt/snort-src
+    state: directory
+    mode: '0755'
+  become: true
+
+- name: Clone libdaq repository if needed
+  ansible.builtin.git:
+    repo: https://github.com/snort3/libdaq.git
+    dest: /opt/snort-src/libdaq
+    update: true
+  become: true
+
+- name: Build and install libdaq
+  ansible.builtin.shell:
+    cmd: |
+      set -e
+      cd /opt/snort-src/libdaq
+      ./bootstrap
+      ./configure --prefix=/usr/local/lib/daq_s3
+      make -j"$(nproc)"
+      make install
+      printf '%s\n' '/usr/local/lib/daq_s3/lib/' > /etc/ld.so.conf.d/libdaq3.conf
+      ldconfig
+    creates: /usr/local/lib/daq_s3/lib/libdaq.so
+  become: true
+
+- name: Clone Snort3 repository if needed
+  ansible.builtin.git:
+    repo: https://github.com/snort3/snort3.git
+    dest: /opt/snort-src/snort3
+    update: true
+  become: true
+
+- name: Configure and install Snort3
+  ansible.builtin.shell:
+    cmd: |
+      set -e
+      cd /opt/snort-src/snort3
+      ./configure_cmake.sh --prefix=/usr/local/snort3 --with-daq-includes=/usr/local/lib/daq_s3/include --with-daq-libraries=/usr/local/lib/daq_s3/lib
+      cmake --build build -- -j"$(nproc)"
+      cmake --install build
+    creates: /usr/local/snort3/bin/snort
+  become: true

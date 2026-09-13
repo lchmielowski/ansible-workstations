@@ -1,0 +1,26 @@
+#---
+## Remote target configuration
+#target_server: "example-host.example"
+#ssh_user: "example-user"
+#ssh_key: "/home/example-user/.ssh/id_ed25519"
+#ssh_port: 22
+#
+## Capture configuration
+#capture_interface: "eth0"
+#packet_truncation: 100           # Snap length (bytes per packet) passed to remote VM
+#capture_output_dir: "/var/lib/network-capture"
+#
+## File rotation settings (Prevents disk space exhaustion)
+#rotation_interval: 5             # Rotate files every N seconds; keep short so tests see a PCAP quickly
+#
+## BPF filter - strictly excludes SSH port to prevent a packet feedback loop
+#capture_filter: "not tcp port {{ ssh_port }} and not udp port {{ ssh_port }}"
+#
+## Optimized SSH Options for automation stability
+#ssh_options: "-o StrictHostKeyChecking=yes -o UserKnownHostsFile=/root/.ssh/known_hosts -o ConnectTimeout=10 -o ServerAliveInterval=15"
+#
+## SSH host public key entries for known_hosts
+#ssh_known_hosts_entry: |
+#  example-host.example ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEXAMPLEHOSTKEYREPLACE
+#  example-host.example ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQEXAMPLEHOSTKEYREPLACEME
+#  example-host.example ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIEXAMPLEHOSTKEYREPLACE

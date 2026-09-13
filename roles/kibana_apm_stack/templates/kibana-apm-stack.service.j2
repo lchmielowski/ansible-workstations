@@ -1,0 +1,16 @@
+[Unit]
+Description=Kibana + APM + Elasticsearch container stack
+Requires={{ kibana_container_service }}
+After={{ kibana_container_service }}
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory={{ kibana_apm_project_path }}
+ExecStart={{ kibana_compose_up_cmd }}
+ExecStop={{ kibana_compose_stop_cmd }}
+
+[Install]
+WantedBy=multi-user.target

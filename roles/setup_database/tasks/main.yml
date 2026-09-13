@@ -1,0 +1,322 @@
+- name: Install the latest version of python3-packaging
+  ansible.builtin.package:
+    name: python-packaging
+    state: latest
+  become: true
+
+- name: Install the latest version of gem
+  ansible.builtin.package:
+    name: ruby
+    state: latest
+  become: true
+
+- name: Prepare installation of dependencies of fernet-cli
+  ansible.builtin.shell:
+    cmd: |
+      which fernet-decrypt || gem install fernet-cli
+
+- name: Ensure decrypt variables are provided (only for master backups)
+  ansible.builtin.assert:
+    that:
+      - fernet_key_file_path is defined
+      - fernet_key_file_path | trim != ''
+      - backup_encrypted_path is defined
+      - backup_encrypted_path | trim != ''
+      - decrypted_backup_path is defined
+      - decrypted_backup_path | trim != ''
+    fail_msg: "Fernet decryption variables (fernet_key_file_path, backup_encrypted_path, decrypted_backup_path) must be set and non-empty."
+  when: db_mode == 'master' and (backup_encrypted_path is defined and backup_encrypted_path | trim != '')
+
+- name: Decrypt backup file (master)
+  ansible.builtin.shell: |
+    fernet-decrypt -k {{ fernet_key_file_path }} -i {{ backup_encrypted_path }} -o {{ decrypted_backup_path }}
+  args:
+    creates: "{{ decrypted_backup_path }}"
+  when: db_mode == 'master' and (backup_encrypted_path is defined and backup_encrypted_path | trim != '')
+
+- name: Ensure the Bitnami PostgreSQL image is used for master/replica
+  ansible.builtin.assert:
+    that:
+      - image_name is defined
+      - image_name | trim != ''
+      - image_name is search('bitnami/postgresql')
+    fail_msg: "setup_database requires the Bitnami PostgreSQL image (for example docker.io/bitnami/postgresql:latest) because the role configures Bitnami replication environment variables."
+  when: db_mode in ['master', 'replica']
+
+- name: Ensure postgres_password is set for master
+  ansible.builtin.assert:
+    that:
+      - postgres_password is defined
+      - postgres_password | trim != ''
+    fail_msg: "postgres_password must be set (use vars or Ansible Vault)"
+  when: db_mode == 'master'
+
+- name: Check if postgres master container is running
+  ansible.builtin.shell: "{{ container_runtime }} ps -q -f name={{ container_name }}"
+  register: master_running
+  changed_when: false
+  failed_when: false
+  when: db_mode == 'master'
+
+- name: Check if postgres master container exists
+  ansible.builtin.shell: "{{ container_runtime }} ps -aq -f name={{ container_name }}"
+  register: master_all
+  changed_when: false
+  failed_when: false
+  when: db_mode == 'master'
+
+- name: Inspect postgres master container image
+  ansible.builtin.shell: "{{ container_runtime }} inspect {{ container_name }} --format '{{ '{{' }}.Config.Image{{ '}}' }}' 2>/dev/null || true"
+  register: master_image
+  changed_when: false
+  failed_when: false
+  when: db_mode == 'master'
+
+- name: Remove stale postgres master container if it is using the wrong image
+  ansible.builtin.shell: "{{ container_runtime }} rm -f {{ container_name }} || true"
+  when:
+    - db_mode == 'master'
+    - master_all is defined
+    - master_all.get('stdout','') != ''
+    - master_image is defined
+    - master_image.get('stdout','') | trim != ''
+    - master_image.get('stdout','') | trim != image_name | trim
+
+- name: Start postgres master container if it exists but is stopped
+  ansible.builtin.shell: "{{ container_runtime }} start {{ container_name }}"
+  when:
+    - db_mode == 'master'
+    - master_running.stdout == ''
+    - master_all.stdout != ''
+  register: master_start
+  changed_when: master_start.rc == 0
+  failed_when: master_start.rc != 0
+
+- name: Run postgres master container if it does not exist
+  ansible.builtin.shell: |
+    {{ container_runtime }} run -d --restart=always \
+      --name "{{ container_name }}" \
+      -e "POSTGRESQL_POSTGRES_PASSWORD={{ postgres_password }}" \
+      -e "POSTGRESQL_USERNAME={{ postgres_username }}" \
+      -e "POSTGRESQL_PASSWORD={{ postgres_password }}" \
+      -e "POSTGRESQL_DATABASE={{ postgres_database }}" \
+      -e "POSTGRES_PASSWORD={{ postgres_password }}" \
+      -e "POSTGRES_USER={{ postgres_username }}" \
+      -e "POSTGRES_DB={{ postgres_database }}" \
+      -e "POSTGRESQL_REPLICATION_MODE=master" \
+      -e "POSTGRESQL_REPLICATION_USER={{ replication_user }}" \
+      -e "POSTGRESQL_REPLICATION_PASSWORD={{ replication_password }}" \
+      -p "0.0.0.0:5432:5432" \
+      -v "postgres_data:/bitnami/postgresql" \
+      {{ image_name }}
+  args:
+    executable: /bin/bash
+  no_log: true
+  when:
+    - db_mode == 'master'
+    - master_running.stdout == ''
+    - master_all.stdout == ''
+
+- name: Check if pg_hba contains replication entry for the replication user
+  ansible.builtin.shell: |
+    if {{ container_runtime }} exec {{ container_name }} grep -q "^host[[:space:]]\+replication[[:space:]]\+{{ replication_user }}" /var/lib/postgresql/data/pg_hba.conf >/dev/null 2>&1; then
+      echo yes
+    else
+      echo no
+    fi
+  register: pg_hba_check
+  changed_when: false
+  failed_when: false
+  when: db_mode == 'master'
+
+- name: Add permissive replication entry to pg_hba.conf inside the container
+  ansible.builtin.shell: |
+    {{ container_runtime }} exec {{ container_name }} bash -lc "echo 'host replication {{ replication_user }} 0.0.0.0/0 scram-sha-256' >> /var/lib/postgresql/data/pg_hba.conf || true"
+  when:
+    - db_mode == 'master'
+    - pg_hba_check.stdout == 'no'
+  register: pg_hba_add
+  failed_when: false
+
+- name: Try to reload Postgres configuration inside the container
+  ansible.builtin.shell: "{{ container_runtime }} exec {{ container_name }} bash -lc \"PGPASSWORD='{{ postgres_password }}' psql -U '{{ postgres_username }}' -c \\\"SELECT pg_reload_conf();\\\"\" || true"
+  when:
+    - db_mode == 'master'
+    - pg_hba_check.stdout == 'no'
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Ensure replica credentials are set
+  ansible.builtin.assert:
+    that:
+      - primary_password is defined
+      - primary_password | trim != ''
+      - replication_password is defined
+      - replication_password | trim != ''
+      - (postgres_password is defined and postgres_password | trim != '') or (primary_password is defined and primary_password | trim != '')
+    fail_msg: "Replica configuration requires primary_password, replication_password, and a local superuser password (postgres_password or primary_password)."
+  when: db_mode == 'replica'
+
+- name: Check if postgres replica container is running
+  ansible.builtin.shell: "{{ container_runtime }} ps -q -f name={{ replica_name }}"
+  register: replica_running
+  changed_when: false
+  failed_when: false
+  when: db_mode == 'replica'
+
+- name: Check if postgres replica container exists
+  ansible.builtin.shell: "{{ container_runtime }} ps -aq -f name={{ replica_name }}"
+  register: replica_all
+  changed_when: false
+  failed_when: false
+  when: db_mode == 'replica'
+
+- name: Inspect postgres replica container image
+  ansible.builtin.shell: "{{ container_runtime }} inspect {{ replica_name }} --format '{{ '{{' }}.Config.Image{{ '}}' }}' 2>/dev/null || true"
+  register: replica_image
+  changed_when: false
+  failed_when: false
+  when: db_mode == 'replica'
+
+- name: Remove stale postgres replica container if it is using the wrong image
+  ansible.builtin.shell: "{{ container_runtime }} rm -f {{ replica_name }} || true"
+  when:
+    - db_mode == 'replica'
+    - replica_all is defined
+    - replica_all.get('stdout','') != ''
+    - replica_image is defined
+    - replica_image.get('stdout','') | trim != ''
+    - replica_image.get('stdout','') | trim != image_name | trim
+
+- name: Set local_postgres_password for replica
+  ansible.builtin.set_fact:
+    local_postgres_password: "{{ postgres_password | default(primary_password, true) }}"
+  when: db_mode == 'replica'
+
+- name: Set primary_connect_host default
+  ansible.builtin.set_fact:
+    primary_connect_host: "{{ primary_host | default('127.0.0.1', true) }}"
+  when: db_mode == 'replica'
+
+- name: Override primary_connect_host for localhost on docker
+  ansible.builtin.set_fact:
+    primary_connect_host: "host.docker.internal"
+  when:
+    - db_mode == 'replica'
+    - (primary_host | default('127.0.0.1')) in ['127.0.0.1','localhost']
+    - container_runtime == 'docker'
+
+- name: Override primary_connect_host for localhost on podman
+  ansible.builtin.set_fact:
+    primary_connect_host: "host.containers.internal"
+  when:
+    - db_mode == 'replica'
+    - (primary_host | default('127.0.0.1')) in ['127.0.0.1','localhost']
+    - container_runtime == 'podman'
+
+- name: Start postgres replica container if it exists but is stopped
+  ansible.builtin.shell: "{{ container_runtime }} start {{ replica_name }}"
+  when:
+    - db_mode == 'replica'
+    - replica_running is defined
+    - replica_running.get('stdout','') == ''
+    - replica_all is defined
+    - replica_all.get('stdout','') != ''
+  register: replica_start
+  changed_when: replica_start.rc == 0
+  failed_when: replica_start.rc != 0
+
+- name: Check if replica data volume exists
+  ansible.builtin.shell: "{{ container_runtime }} volume ls -q | grep -qx \"postgres_replica_data_{{ replica_host_port }}\" && echo yes || echo no"
+  register: replica_volume_check
+  changed_when: false
+  failed_when: false
+  when:
+    - db_mode == 'replica'
+    - replica_running is defined
+    - replica_running.get('stdout','') == ''
+    - replica_all is defined
+    - replica_all.get('stdout','') == ''
+
+- name: Remove existing replica data volume
+  ansible.builtin.shell: "{{ container_runtime }} volume rm -f \"postgres_replica_data_{{ replica_host_port }}\" || true"
+  when:
+    - db_mode == 'replica'
+    - replica_volume_check is defined
+    - replica_volume_check.get('stdout','') == 'yes'
+
+- name: Run postgres replica container if it does not exist
+  ansible.builtin.shell: |
+    {{ container_runtime }} run -d --restart=always \
+      --add-host=host.docker.internal:host-gateway \
+      --add-host=host.containers.internal:host-gateway \
+      --name "{{ replica_name }}" \
+      -e "POSTGRESQL_POSTGRES_PASSWORD={{ local_postgres_password }}" \
+      -e "POSTGRESQL_USERNAME={{ postgres_username | default('postgres', true) }}" \
+      -e "POSTGRESQL_PASSWORD={{ local_postgres_password }}" \
+      -e "POSTGRESQL_DATABASE={{ postgres_database | default('postgres', true) }}" \
+      -e "POSTGRES_PASSWORD={{ local_postgres_password }}" \
+      -e "POSTGRES_USER={{ postgres_username | default('postgres', true) }}" \
+      -e "POSTGRES_DB={{ postgres_database | default('postgres', true) }}" \
+      -e "POSTGRESQL_REPLICATION_MODE=slave" \
+      -e "POSTGRESQL_MASTER_HOST={{ primary_connect_host }}" \
+      -e "POSTGRESQL_MASTER_PORT_NUMBER={{ primary_port }}" \
+      -e "POSTGRESQL_MASTER_USER={{ primary_user }}" \
+      -e "POSTGRESQL_MASTER_PASSWORD={{ primary_password }}" \
+      -e "POSTGRESQL_PRIMARY_HOST={{ primary_connect_host }}" \
+      -e "POSTGRESQL_PRIMARY_PORT_NUMBER={{ primary_port }}" \
+      -e "POSTGRESQL_PRIMARY_USER={{ primary_user }}" \
+      -e "POSTGRESQL_PRIMARY_PASSWORD={{ primary_password }}" \
+      -e "POSTGRESQL_REPLICATION_USER={{ replication_user }}" \
+      -e "POSTGRESQL_REPLICATION_PASSWORD={{ replication_password }}" \
+      -p "127.0.0.1:{{ replica_host_port }}:5432" \
+      -v "postgres_replica_data_{{ replica_host_port }}:/bitnami/postgresql" \
+      {{ image_name }}
+  args:
+    executable: /bin/bash
+  no_log: true
+  when:
+    - db_mode == 'replica'
+    - replica_running is defined
+    - replica_running.get('stdout','') == ''
+    - replica_all is defined
+    - replica_all.get('stdout','') == ''
+
+- name: Check if postgres replica container exists after startup attempts
+  ansible.builtin.shell: "{{ container_runtime }} ps -aq -f name={{ replica_name }}"
+  register: replica_all_after
+  changed_when: false
+  failed_when: false
+  when: db_mode == 'replica'
+
+- name: Wait for postgres replica to become ready
+  ansible.builtin.shell: |
+    for _ in $(seq 1 30); do
+      if {{ container_runtime }} exec "{{ replica_name }}" pg_isready -h 127.0.0.1 -U "{{ postgres_username | default('postgres', true) }}" -d "{{ postgres_database | default('postgres', true) }}" > /dev/null 2>&1; then
+        exit 0
+      fi
+      sleep 2
+    done
+    echo "Replica failed to start; container logs:"
+    {{ container_runtime }} logs "{{ replica_name }}" || true
+    exit 1
+  when:
+    - db_mode == 'replica'
+    - replica_all_after is defined
+    - replica_all_after.get('stdout','') != ''
+
+- name: Restore database from backup (master)
+  ansible.builtin.shell: |
+    # Wait until Postgres inside the container is ready
+    until {{ container_runtime }} exec "{{ container_name }}" pg_isready -h 127.0.0.1 -U "{{ postgres_username }}" -d "{{ postgres_database }}" > /dev/null 2>&1; do
+      sleep 2
+    done
+
+    # Stream the backup into psql to avoid using container cp which can fail with podman rootless namespaces
+    PGPASSWORD="{{ postgres_password }}" {{ container_runtime }} exec -i "{{ container_name }}" sh -c 'PGPASSWORD="{{ postgres_password }}" psql -h 127.0.0.1 -U "{{ postgres_username }}" -d "{{ postgres_database }}" -f -' < "{{ decrypted_backup_path }}"
+
+    # Remove local temporary file
+    rm -f {{ decrypted_backup_path }}
+  when: db_mode == 'master' and (decrypted_backup_path is defined)
+  no_log: true

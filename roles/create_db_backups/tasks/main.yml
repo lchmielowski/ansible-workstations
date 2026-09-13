@@ -1,0 +1,90 @@
+- name: Install dependencies for fernet (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name: "{{ item }}"
+    state: latest
+  loop:
+    - gem
+    - rubygems
+  when: ansible_facts['os_family'] == "Debian"
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Install dependencies for fernet (Fedora)
+  ansible.builtin.dnf:
+    name: "{{ item }}"
+    state: latest
+  loop:
+    - rubygems
+  when: ansible_facts['os_family'] == "RedHat"
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Install dependencies for cron (Fedora)
+  ansible.builtin.dnf:
+    name: "{{ item }}"
+    state: latest
+  loop:
+    - cronie
+  when: ansible_facts['os_family'] == "RedHat"
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Check if fernet-cli gem is installed
+  ansible.builtin.command:
+    cmd: gem list -i fernet-cli
+  register: gem_installed
+  changed_when: false
+  failed_when: false
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Install fernet-cli gem if missing
+  ansible.builtin.command:
+    cmd: gem install fernet-cli
+  when: gem_installed.rc != 0
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Create backups directory if it does not exist
+  ansible.builtin.file:
+    path: "{{ backup_directory }}"
+    state: directory
+    mode: '0755'
+
+- name: Check if remote file exists
+  stat:
+    path: "{{ backup_directory }}/fernet_key_raw.txt"
+
+- name: Create backups script directory
+  ansible.builtin.file:
+    path: "{{ backup_scripts_directory }}"
+    state: directory
+    mode: '0755'
+
+- name: Deploy database backup script from template
+  ansible.builtin.template:
+    src: create_backup.sh.j2
+    dest: "{{ backup_scripts_directory }}/create_backup.sh"
+    owner: root
+    group: root
+    mode: '0755'
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Create log directory for backups
+  ansible.builtin.file:
+    path: /var/log/db-backups
+    state: directory
+    mode: '0755'
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Create cron job to create backups of database
+  ansible.builtin.cron:
+    name: "Create backup of database"
+    minute: "36"
+    hour: "16"
+    job: "{{ backup_scripts_directory }}/create_backup.sh 2>&1"
+    user: root
+  become: true
+  become_method: ansible.builtin.sudo

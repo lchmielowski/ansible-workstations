@@ -1,0 +1,12 @@
+- name: Enable COPR repo for PyCharm
+  ansible.builtin.command:
+    cmd: dnf -y copr enable phracek/PyCharm
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Install the latest version of pycharm-community
+  ansible.builtin.package:
+    name: pycharm-community
+    state: latest
+  become: true
+  become_method: ansible.builtin.sudo

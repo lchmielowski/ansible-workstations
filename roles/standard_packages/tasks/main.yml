@@ -1,0 +1,10 @@
+- name: Install essential packages
+  ansible.builtin.package:
+    name:
+      - git
+      - htop
+      - ncdu
+      - python3-pip
+    state: latest
+  become: true
+  become_method: ansible.builtin.sudo

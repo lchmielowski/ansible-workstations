@@ -1,0 +1,28 @@
+#!/bin/bash
+set -euo pipefail
+
+capture_filter="{{ capture_filter | default('') | trim }}"
+remote_cmd=""
+
+if [ -n "$capture_filter" ]; then
+  remote_cmd="tcpdump -Z root -i {{ capture_interface }} -s {{ packet_truncation }} -U -w - '$capture_filter'"
+else
+  remote_cmd="tcpdump -Z root -i {{ capture_interface }} -s {{ packet_truncation }} -U -w -"
+fi
+
+if [ "{{ ssh_user }}" != "root" ]; then
+  remote_cmd="sudo -n $remote_cmd"
+fi
+
+read -r -a ssh_opts <<< "{{ ssh_options | default('') }}"
+
+# FIX: By using -w - and streaming into a bash redirect (>), the shell handles
+# writing the file to disk, bypassing tcpdump's strict binary SELinux restrictions.
+exec /usr/bin/ssh \
+  -i "{{ ssh_key }}" \
+  -p {{ ssh_port }} \
+  -o BatchMode=yes \
+  -o NumberOfPasswordPrompts=0 \
+  "${ssh_opts[@]}" \
+  "{{ ssh_user }}@{{ target_server }}" \
+  "$remote_cmd" | /usr/bin/tcpdump -Z root -r - -U -G {{ rotation_interval }} -w - > "{{ capture_output_dir }}/capture_$(date +%Y-%m-%d_%H-%M-%S).pcap"

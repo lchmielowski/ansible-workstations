@@ -1,0 +1,21 @@
+[Unit]
+Description=SSH Tunnel {{ item.name }} - {{ item.description | default('') }}
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+SELinuxContext=system_u:system_r:unconfined_service_t:s0
+Type=simple
+User={{ item.tunnel_user | default(ssh_tunnel_user) }}
+ExecStart=
+ExecStart=/usr/bin/runcon -t unconfined_service_t -- /usr/bin/ssh {{ item.ssh_options | default(ssh_options) }} -o StrictHostKeyChecking=yes -o UserKnownHostsFile={{ ssh_tunnel_home }}/.ssh/known_hosts -i {{ item.ssh_key_path | default(ssh_key_path) }} {{ item.forward_option }} {{ item.remote_host }}
+Restart=always
+RestartSec=10
+StartLimitInterval=60
+StartLimitBurst=3
+StandardInput=null
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

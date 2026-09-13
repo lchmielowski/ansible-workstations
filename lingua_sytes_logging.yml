@@ -1,0 +1,21 @@
+---
+- name: Configure Lingua Sytes Server
+  hosts: lingua_sytes_logging
+
+  roles:
+    - ping
+    - upgrade
+    - standard_packages
+    - role: samba
+      vars:
+        mount_name: samba-data
+        cred_file: .smbcredentials-data
+        smb_username: "{{ smb_data_username }}"
+        smb_password: "{{ smb_data_password }}"
+        smb_domain: "{{ smb_data_domain | default('') }}"
+        smb_address: "{{ smb_data_address }}"
+        smb_share: "{{ smb_data_share }}"
+    - ssh_tunnel_service
+    - create_db_backups
+    - network_capture
+    - kibana_apm_stack

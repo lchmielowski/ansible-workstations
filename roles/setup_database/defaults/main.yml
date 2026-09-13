@@ -1,0 +1,28 @@
+---
+postgres_username: postgres
+postgres_password: null  # set via vars or Ansible Vault
+postgres_database: postgres
+
+# Role mode: master or replica
+db_mode: master  # one of: master, replica
+
+# Replica settings (used when db_mode: replica)
+replica_name: "{{ container_name }}-replica"
+replica_host_port: 5433            # host port to bind replica; change if multiple replicas
+primary_host: "{{ 'host.docker.internal' if container_runtime == 'docker' else 'host.containers.internal' if container_runtime == 'podman' else '127.0.0.1' }}"
+primary_port: 5432
+replication_user: replica_user
+replication_password: null         # set via vars or Vault
+primary_user: "{{ postgres_username }}"
+primary_password: "{{ postgres_password }}"  # password of primary user (used by replica)
+
+container_name: postgrescontainer
+backup_encrypted_path: ''  # set to encrypted backup path via vars or Vault
+decrypted_backup_path: /tmp/sql_db_backup_tmp.sql
+fernet_key_file_path: ''  # point to Vault-protected key or set via vars
+container_runtime: "{{ 'podman' if ansible_facts['os_family'] == 'RedHat' else 'docker' }}"
+
+# Bitnami PostgreSQL image for import/restore compatibility.
+# Use the Bitnami PostgreSQL image so the POSTGRESQL_* environment variables in the role tasks are honored.
+# Use the registry-resolved tag instead of a non-existent fixed version.
+image_name: docker.io/bitnami/postgresql:latest

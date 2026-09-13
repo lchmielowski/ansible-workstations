@@ -1,0 +1,43 @@
+---
+- name: Configure Main Workstation
+  hosts: main_workstation
+
+  roles:
+    - ping
+    - firewall
+    - upgrade
+    - standard_packages
+    - role: samba
+      vars:
+        mount_name: samba-data
+        cred_file: .smbcredentials-data
+        smb_username: "{{ smb_data_username }}"
+        smb_password: "{{ smb_data_password }}"
+        smb_domain: "{{ smb_data_domain | default('') }}"
+        smb_address: "{{ smb_data_address }}"
+        smb_share: "{{ smb_data_share }}"
+    - role: samba
+      vars:
+        mount_name: samba-photos
+        cred_file: .smbcredentials-photos
+        smb_username: "{{ smb_photos_username }}"
+        smb_password: "{{ smb_photos_password }}"
+        smb_domain: "{{ smb_photos_domain | default('') }}"
+        smb_address: "{{ smb_photos_address }}"
+        smb_share: "{{ smb_photos_share }}"
+    - pycharm
+    - android_studio
+    - setup_projects
+    - keepassxc
+    - snort
+    - role: setup_database
+      vars:
+        db_mode: master
+        container_name: postgres_master
+        postgres_password: "{{ postgres_master_password }}"  # loaded from group_vars or Vault
+        # postgres_username / postgres_database are sourced from group_vars/main_workstation.yml or role defaults
+        replication_user: "{{ postgres_replication_user | default('replica_user') }}"
+        replication_password: "{{ postgres_replication_password }}"
+    - ollama
+    - opensnitch
+    - virtual_machines

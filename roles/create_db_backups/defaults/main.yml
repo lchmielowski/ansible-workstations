@@ -1,0 +1,13 @@
+# Database backup configuration - override in group_vars or host_vars
+backup_directory: /mnt/samba-data/projects/lingua-sytes/database_backups/
+backup_scripts_directory: /home/lingua-sytes/scripts
+db_host: 127.0.0.1
+db_user: postgres
+db_name: postgres
+db_password: null
+postgres_docker_image: "docker.io/library/postgres:17"
+log_file: /var/log/db-backups/backup.log
+backup_retention_days: 30
+# Container runtime - docker for Debian, podman for Fedora
+container_runtime: "{{ 'podman' if ansible_facts['os_family'] == 'RedHat' else 'docker' }}"
+fernet_key_path: /mnt/samba-data/projects/lingua-sytes/database_backups/fernet_key_raw.txt

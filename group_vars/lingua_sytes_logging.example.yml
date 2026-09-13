@@ -1,0 +1,33 @@
+---
+# Example values only. Copy this file to logging_workstation.yml and set your own secrets.
+
+backup_directory: "/path/to/backups"
+backup_scripts_directory: "/path/to/scripts"
+db_host: "127.0.0.1"
+db_user: "postgres"
+db_name: "postgres"
+db_password: "CHANGE_ME"
+postgres_docker_image: "postgres:17"
+log_file: "/var/log/db-backups/backup.log"
+backup_retention_days: 30
+
+smb_data_username: "example_user"
+smb_data_password: "CHANGE_ME"
+# Optional: set this for AD/domain-authenticated SMB servers.
+smb_data_domain: "WORKGROUP"
+smb_data_address: "samba.example.com"
+smb_data_share: "data"
+
+ssh_known_hosts_entry: |
+  example-host ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleHostKey
+
+ssh_tunnels:
+  - name: "example-apm"
+    description: "Example SSH tunnel"
+    remote_host: "user@example-host"
+    tunnel_user: "user"
+    ssh_key_path: "/path/to/id_ed25519"
+    forward_option: "-R 8200:127.0.0.1:8200"
+    ssh_options: "-N -T"
+    ssh_known_hosts_entry: |
+      example-host ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleHostKey

@@ -1,0 +1,168 @@
+- name: Download Ollama installer script and verify its checksum
+  ansible.builtin.get_url:
+    url: "{{ ollama_installer_url }}"
+    dest: /tmp/ollama-install.sh
+    mode: '0750'
+    checksum: "sha256:{{ ollama_installer_sha256 }}"
+  become: true
+
+- name: Run Ollama installer (verified)
+  ansible.builtin.command:
+    cmd: /bin/sh /tmp/ollama-install.sh
+  become: true
+
+
+- name: Gather facts about installed services
+  ansible.builtin.service_facts:
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Ensure Ollama home directory exists
+  ansible.builtin.file:
+    path: /var/lib/ollama
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  become: true
+
+- name: Install systemd unit for Ollama when systemd is available
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/ollama.service
+    content: |
+      [Unit]
+      Description=Ollama server
+      After=network.target
+
+      [Service]
+      Type=simple
+      Environment=PATH=/usr/local/bin:/usr/bin:/bin
+      Environment=OLLAMA_HOST=127.0.0.1
+      Environment=OLLAMA_PORT=11434
+      Environment=HOME=/var/lib/ollama
+      ExecStartPre=/bin/sh -c 'command -v ollama >/dev/null || { echo "ollama binary not found" >&2; exit 1; }'
+      ExecStart=/bin/sh -c 'OLLAMA_BIN="$(command -v ollama || ls /usr/local/bin/ollama /usr/bin/ollama 2>/dev/null | head -n 1)"; if [ -z "$OLLAMA_BIN" ] || [ ! -x "$OLLAMA_BIN" ]; then echo "ollama binary not found or not executable: $OLLAMA_BIN" >&2; exit 1; fi; exec env OLLAMA_HOST=127.0.0.1 OLLAMA_PORT=11434 "$OLLAMA_BIN" serve'
+      Restart=on-failure
+      RestartSec=5
+      StandardOutput=journal
+      StandardError=journal
+
+      [Install]
+      WantedBy=multi-user.target
+    owner: root
+    group: root
+    mode: '0644'
+  become: true
+  when: ansible_facts.services is defined
+
+- name: Reload systemd and ensure ollama service is running when unit present
+  ansible.builtin.systemd:
+    name: ollama
+    state: started
+    enabled: true
+    daemon_reload: true
+  become: true
+  when: ansible_facts.services is defined
+
+- name: Check that ollama service is active
+  ansible.builtin.command:
+    cmd: systemctl is-active --quiet ollama
+  register: ollama_active
+  failed_when: false
+  changed_when: false
+  become: true
+  when: ansible_facts.services is defined
+
+- name: Gather logs and fail if ollama service failed to start
+  block:
+    - name: Gather systemctl status
+      ansible.builtin.command:
+        cmd: systemctl status ollama --no-pager -l
+      register: svc_status
+      failed_when: false
+      changed_when: false
+      become: true
+
+    - name: Gather last 200 journal lines for ollama
+      ansible.builtin.command:
+        cmd: journalctl -u ollama --no-pager -n 200
+      register: svc_journal
+      failed_when: false
+      changed_when: false
+      become: true
+
+    - name: Fail with logs to help debugging
+      ansible.builtin.fail:
+        msg: |
+          Ollama service failed to start (systemctl is-active returned non-zero).
+          systemctl status:
+          {{ svc_status.stdout }}
+          journalctl:
+          {{ svc_journal.stdout }}
+  when: ollama_active.rc != 0 and ansible_facts.services is defined
+
+- name: Start Ollama directly when no systemd service exists
+  ansible.builtin.shell:
+    cmd: |
+      set -e
+      OLLAMA_BIN="$(command -v ollama || ls /usr/local/bin/ollama /usr/bin/ollama 2>/dev/null | head -n 1)"
+      if [ -z "$OLLAMA_BIN" ]; then
+        echo "ollama binary not found after installation" >&2
+        exit 1
+      fi
+      if ! pgrep -f "${OLLAMA_BIN} serve" >/dev/null 2>&1; then
+        nohup env OLLAMA_HOST=127.0.0.1 OLLAMA_PORT=11434 "$OLLAMA_BIN" serve >/tmp/ollama.log 2>&1 &
+        sleep 10
+      fi
+  become: true
+  become_method: ansible.builtin.sudo
+  when: ansible_facts.services is not defined
+
+- block:
+    - name: Wait for the Ollama server port to accept connections
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: 11434
+        delay: 2
+        timeout: 600
+        state: started
+
+    - name: Wait until the Ollama API is ready
+      ansible.builtin.uri:
+        url: http://127.0.0.1:11434/api/version
+        method: GET
+        status_code: 200
+        timeout: 30
+      register: ollama_api
+      until: ollama_api.status == 200
+      retries: 120
+      delay: 2
+  rescue:
+    - name: Gather ollama systemd status
+      ansible.builtin.command:
+        cmd: systemctl status ollama --no-pager -l
+      register: svc_status
+      failed_when: false
+      changed_when: false
+
+    - name: Gather last 200 journal lines for ollama
+      ansible.builtin.command:
+        cmd: journalctl -u ollama --no-pager -n 200
+      register: svc_journal
+      failed_when: false
+      changed_when: false
+
+    - name: Fail with logs to help debugging
+      ansible.builtin.fail:
+        msg: |
+          Ollama did not become reachable on 127.0.0.1:11434 within timeout.
+          systemctl status:
+          {{ svc_status.stdout }}
+          journalctl:
+          {{ svc_journal.stdout }}
+
+- name: Download ollama models
+  ansible.builtin.shell:
+    cmd: |
+      ollama pull "{{ item }}"
+  loop: "{{ ollama_model_list | default(ollama_models, true) }}"

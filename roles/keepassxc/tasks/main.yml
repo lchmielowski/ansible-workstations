@@ -1,0 +1,6 @@
+- name: Install the latest keepassxc
+  ansible.builtin.package:
+    name: keepassxc
+    state: latest
+  become: true
+  become_method: ansible.builtin.sudo

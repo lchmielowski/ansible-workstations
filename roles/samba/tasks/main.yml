@@ -1,0 +1,67 @@
+---
+- name: Install cifs dependencies
+  ansible.builtin.package:
+    name:
+      - cifs-utils
+      - samba-client
+      - samba-common
+    state: latest
+  become: true
+
+- name: Ensure credential directory exists
+  ansible.builtin.file:
+    path: "{{ cred_dir }}"
+    state: directory
+    mode: '0755'
+  become: true
+
+- name: Ensure credential file exists with correct content
+  ansible.builtin.copy:
+    dest: "{{ cred_dir }}/{{ cred_file }}"
+    content: |
+      username={{ smb_username }}
+      password={{ smb_password }}
+      {% if smb_domain | default('') | length > 0 %}
+      domain={{ smb_domain }}
+      {% endif %}
+    owner: root
+    group: root
+    mode: '0600'
+    force: true
+  become: true
+  no_log: true
+
+- name: Ensure mount point directory exists
+  ansible.builtin.file:
+    path: "{{ mount_point }}"
+    state: directory
+    mode: '0755'
+  become: true
+
+- name: Ensure samba mount is present in fstab
+  ansible.builtin.mount:
+    path: "{{ mount_point }}"
+    src: "//{{ smb_address }}/{{ smb_share }}"
+    fstype: cifs
+    opts: "{{ ['credentials=' ~ (cred_dir ~ '/' ~ cred_file), 'vers=' ~ smb_version, 'uid=' ~ smb_uid, 'gid=' ~ smb_gid, 'iocharset=utf8'] | join(',') }}"
+    state: present
+  become: true
+  no_log: true
+
+- name: Wait for SMB port to be reachable
+  ansible.builtin.wait_for:
+    host: "{{ smb_address }}"
+    port: 445
+    timeout: 30
+    state: started
+  become: true
+
+- name: Ensure samba mount is mounted
+  ansible.builtin.mount:
+    path: "{{ mount_point }}"
+    src: "//{{ smb_address }}/{{ smb_share }}"
+    fstype: cifs
+    opts: "{{ ['credentials=' ~ (cred_dir ~ '/' ~ cred_file), 'vers=' ~ smb_version, 'uid=' ~ smb_uid, 'gid=' ~ smb_gid, 'iocharset=utf8'] | join(',') }}"
+    state: mounted
+  become: true
+  no_log: false

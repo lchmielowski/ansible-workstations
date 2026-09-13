@@ -1,0 +1,116 @@
+---
+- name: Install virtualization packages
+  ansible.builtin.dnf:
+    name:
+      - "@virtualization"
+      - virt-install
+      - virt-manager
+    state: latest
+  become: true
+
+- name: Enable and start libvirtd service
+  ansible.builtin.systemd:
+    name: libvirtd
+    state: started
+    enabled: true
+  become: true
+
+- name: Add user to libvirt group
+  ansible.builtin.user:
+    name: "{{ vm_user }}"
+    groups: libvirt
+    append: true
+  become: true
+
+- name: Add user to kvm group
+  ansible.builtin.user:
+    name: "{{ vm_user }}"
+    groups: kvm
+    append: true
+  become: true
+
+- name: Verify installation
+  ansible.builtin.command: virsh --version
+  register: virsh_version
+  changed_when: false
+
+- name: Show libvirt version
+  ansible.builtin.debug:
+    msg: "libvirt version: {{ virsh_version.stdout }}"
+
+- name: Check libvirt images directory
+  ansible.builtin.stat:
+    path: /var/lib/libvirt/images
+  register: libvirt_images
+
+- name: Create libvirt storage pool directory
+  ansible.builtin.file:
+    path: /var/lib/libvirt/images
+    state: directory
+    owner: libvirt-qemu
+    group: libvirt-qemu
+    mode: '0755'
+  become: true
+  when: not libvirt_images.stat.exists
+
+- name: Add Hashicorp repository
+  ansible.builtin.yum_repository:
+    name: hashicorp
+    description: HashiCorp Stable - Fedora $releasever
+    baseurl: https://rpm.releases.hashicorp.com/fedora/$releasever/stable/$basearch
+    enabled: true
+    gpgcheck: true
+    gpgkey: https://rpm.releases.hashicorp.com/gpg
+  become: true
+
+- name: Install terraform
+  ansible.builtin.dnf:
+    name: terraform
+    state: latest
+  become: true
+
+- name: Ensure default libvirt pool exists
+  ansible.builtin.shell:
+    cmd: |
+      set -e
+      if ! virsh pool-info default >/dev/null 2>&1; then
+        virsh pool-define-as default dir --target "/var/lib/libvirt/images"
+        virsh pool-build default
+      fi
+      virsh pool-start default || true
+      virsh pool-autostart default || true
+    executable: /bin/bash
+  become: true
+
+- name: Ensure PycharmProjects directory exists
+  ansible.builtin.file:
+    path: "{{ ansible_facts.user_dir | default(lookup('env', 'HOME')) }}/PycharmProjects"
+    state: directory
+    mode: '0755'
+
+- name: Check terraform-kvm source
+  ansible.builtin.stat:
+    path: /mnt/samba-data/system_installation/terraform-kvm
+  register: terraform_kvm_source
+
+- name: Copy terraform-kvm data (remote source)
+  ansible.builtin.copy:
+    src: /mnt/samba-data/system_installation/terraform-kvm/
+    dest: "{{ ansible_facts.user_dir | default(lookup('env','HOME')) }}/PycharmProjects/terraform-kvm"
+    remote_src: true
+    owner: "{{ ansible_user | default(lookup('env','USER')) }}"
+    group: "{{ ansible_user | default(lookup('env','USER')) }}"
+    mode: '0755'
+  when: terraform_kvm_source.stat.exists
+
+
+- name: Create virtual machines
+  ansible.builtin.shell:
+    cmd: |
+      set -e
+      cd "{{ ansible_facts.user_dir | default(lookup('env', 'HOME')) }}/PycharmProjects/terraform-kvm/environments/dev"
+      terraform init
+      terraform plan -out=tfplan
+      terraform apply -auto-approve
+    executable: /bin/bash
+    creates: "{{ ansible_facts.user_dir | default(lookup('env', 'HOME')) }}/PycharmProjects/terraform-kvm/environments/dev/terraform.tfstate"

@@ -1,0 +1,12 @@
+[Service]
+Type=simple
+User=root
+Group=root
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+UMask=0007
+
+# Execute our wrapper script directly
+ExecStart=/bin/bash /usr/local/bin/network-capture-remote.sh
+
+Restart=always
+RestartSec=10

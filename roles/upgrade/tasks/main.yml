@@ -1,0 +1,15 @@
+---
+- name: Update and upgrade packages on Debian/Ubuntu
+  ansible.builtin.apt:
+    upgrade: dist
+    update_cache: yes
+    autoremove: yes
+  when: ansible_facts['os_family'] == "Debian"
+  become: true
+
+- name: Upgrade all packages on RedHat-family (dnf)
+  ansible.builtin.dnf:
+    name: "*"
+    state: latest
+  when: ansible_facts['os_family'] == "RedHat"
+  become: true

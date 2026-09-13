@@ -1,0 +1,6 @@
+---
+- name: reload network capture systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+  become: true
+  become_method: ansible.builtin.sudo

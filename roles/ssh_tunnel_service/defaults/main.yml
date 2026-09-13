@@ -1,0 +1,39 @@
+---
+# SSH key file name (will be placed in ~/.ssh/)
+ssh_key_name: "private-key-ls"
+
+# Source of SSH key (if set, will copy from this path)
+ssh_key_source: "/mnt/samba-data/projects/lingua-sytes/ssh-key"
+
+# The SSH user for tunnel connections
+ssh_tunnel_user: "root"
+
+# Home directory for the ssh_tunnel_user; resolves correctly for root vs regular users
+ssh_tunnel_home: "{{ '/root' if ssh_tunnel_user == 'root' else '/home/' ~ ssh_tunnel_user }}"
+
+# Path to SSH key (defaults depend on ssh_tunnel_home)
+ssh_key_path: "{{ ssh_tunnel_home }}/.ssh/{{ ssh_key_name }}"
+
+# Default SSH options for all tunnels
+ssh_options: "-N -T -o ExitOnForwardFailure=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile={{ ssh_tunnel_home }}/.ssh/known_hosts -o ConnectTimeout=10 -o ServerAliveInterval=60 -o ServerAliveCountMax=3"
+
+# SSH host public key entries for known_hosts (required for strict host verification)
+# Format: hostname key-type public-key-data (one entry per line)
+# Can contain ED25519, RSA, ECDSA, etc.
+# Leave empty only if every tunnel item sets ssh_known_hosts_entry explicitly.
+ssh_known_hosts_entry: ""
+
+# List of SSH tunnels to create
+# Each tunnel should have:
+#   - name: unique identifier for the service
+#   - remote_host: remote SSH host
+#   - forward_option: -L (local) or -R (remote) port forwarding
+#   - tunnel_user: SSH user (optional, defaults to ssh_tunnel_user)
+#   - ssh_key_path: SSH key path (optional, defaults to ssh_key_path)
+#   - ssh_options: SSH options (optional, defaults to ssh_options)
+#   - ssh_known_hosts_entry: SSH public key entry for known_hosts (optional, defaults to ssh_known_hosts_entry)
+#   - description: description for the service
+ssh_tunnels: []
+
+# The user on the VM where the SSH tunnels will be set up
+vm_user: "root"

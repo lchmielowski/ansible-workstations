@@ -1,0 +1,101 @@
+---
+- name: Ensure SSH key directory exists
+  file:
+    path: "{{ ssh_tunnel_home }}/.ssh"
+    state: directory
+    owner: "{{ ssh_tunnel_user }}"
+    group: "{{ ssh_tunnel_user }}"
+    mode: 0700
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Copy SSH key from samba mount
+  copy:
+    src: /mnt/samba-data/projects/lingua-sytes/ssh-key
+    dest: "{{ ssh_tunnel_home }}/.ssh/{{ ssh_key_name }}"
+    owner: "{{ ssh_tunnel_user }}"
+    group: "{{ ssh_tunnel_user }}"
+    mode: 0600
+    remote_src: yes
+  when: ssh_key_source is defined
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Require an explicit SSH host key entry for each tunnel in config
+  ansible.builtin.assert:
+    that:
+      - (item.ssh_known_hosts_entry is defined and (item.ssh_known_hosts_entry | trim | length > 0)) or (ssh_known_hosts_entry | trim | length > 0)
+    fail_msg: "Each SSH tunnel must define ssh_known_hosts_entry in config or use the global ssh_known_hosts_entry. Do not accept unknown host keys."
+  loop: "{{ ssh_tunnels }}"
+  when: item.remote_host is defined and item.remote_host | length > 0
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Add SSH host keys to known_hosts for tunnel hosts
+  blockinfile:
+    path: "{{ ssh_tunnel_home }}/.ssh/known_hosts"
+    create: yes
+    owner: "{{ ssh_tunnel_user }}"
+    group: "{{ ssh_tunnel_user }}"
+    mode: 0644
+    block: |
+      {{ item.ssh_known_hosts_entry | default(ssh_known_hosts_entry) }}
+    marker: "# {mark} ANSIBLE MANAGED SSH HOST KEY FOR {{ item.name }}"
+    state: present
+  loop: "{{ ssh_tunnels }}"
+  when: (item.remote_host is defined and item.remote_host | length > 0) and ((item.ssh_known_hosts_entry is defined and item.ssh_known_hosts_entry | trim | length > 0) or (ssh_known_hosts_entry | trim | length > 0))
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Validate known_hosts contains expected host entry for each tunnel target
+  ansible.builtin.command: "ssh-keygen -F {{ (item.remote_host | default('')).split('@')[-1] }} -f {{ ssh_tunnel_home }}/.ssh/known_hosts"
+  loop: "{{ ssh_tunnels }}"
+  loop_control:
+    label: "{{ item.name | default((item.remote_host | default('')).split('@')[-1]) }}"
+  when: (item.remote_host is defined and item.remote_host | length > 0)
+  register: tunnel_known_hosts_check
+  failed_when: false
+  changed_when: false
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Assert each tunnel target exists in known_hosts
+  ansible.builtin.assert:
+    that:
+      - item.rc == 0
+    fail_msg: "known_hosts is missing the expected SSH host entry for {{ item.item.remote_host }}"
+  loop: "{{ tunnel_known_hosts_check.results }}"
+  when: item.item.remote_host is defined and item.item.remote_host | length > 0
+  become: true
+  become_method: ansible.builtin.sudo
+
+
+- name: Deploy SSH tunnel systemd services for each tunnel
+  template:
+    src: ssh_tunnel.service.j2
+    dest: /etc/systemd/system/ssh_tunnel_{{ item.name }}.service
+    owner: root
+    group: root
+    mode: 0644
+  loop: "{{ ssh_tunnels }}"
+  notify: Reload ssh tunnel systemd daemon
+  become: true
+  become_method: ansible.builtin.sudo
+
+
+- name: Enable SSH tunnel services
+  systemd:
+    name: ssh_tunnel_{{ item.name }}.service
+    enabled: yes
+    daemon_reload: yes
+  loop: "{{ ssh_tunnels }}"
+  become: true
+  become_method: ansible.builtin.sudo
+
+- name: Start SSH tunnel services
+  systemd:
+    name: ssh_tunnel_{{ item.name }}.service
+    state: started
+  loop: "{{ ssh_tunnels }}"
+  become: true
+  become_method: ansible.builtin.sudo

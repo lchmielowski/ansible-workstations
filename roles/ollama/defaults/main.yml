@@ -1,0 +1,16 @@
+---
+ollama_installer_url: "https://ollama.com/install.sh"
+ollama_installer_sha256: "25f64b810b947145095956533e1bdf56eacea2673c55a7e586be4515fc882c9f"
+
+ollama_models:
+  #- llama3.2:1b
+  #- qwen3.0-coder:0.6b
+  #- granite3.1-dense:8b
+  #- granite-embedding:30m
+  #- llama3.1:8b
+  #- moondream:latest
+  #- qwen2.5-coder:1.5b-base
+  #- qwen2.5-coder:1.5b
+  - steamdj/llama3.1-cpu-only:latest
+
+ollama_model_list: "{{ ollama_models }}"

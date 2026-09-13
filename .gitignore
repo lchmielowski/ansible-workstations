@@ -1,0 +1,29 @@
+# local inventories and secrets
+inventory.ini
+**/inventory.ini
+
+# local group/host vars (keep templates only)
+group_vars/*.yml
+group_vars/*.yaml
+host_vars/*.yml
+host_vars/*.yaml
+!group_vars/*.example.yml
+!group_vars/*.example.yaml
+!inventory.ini.example
+
+# TLS/private keys
+*.key
+*.pem
+*.crt
+**/*.key
+**/*.pem
+**/*.crt
+
+# Python cache and editor artifacts
+__pycache__/
+**/__pycache__/
+*.pyc
+.idea/
+
+# Temporary artifacts
+/tmp/*
